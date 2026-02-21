@@ -1,0 +1,76 @@
+package main
+
+import (
+	"log"
+	"os"
+
+	"github.com/gin-gonic/gin"
+	"github.com/kitsnail/streamlet/config"
+	"github.com/kitsnail/streamlet/handlers"
+	"github.com/kitsnail/streamlet/storage"
+)
+
+func main() {
+	// Load config
+	cfg := config.Load()
+
+	// Initialize storage
+	videoStore := storage.NewStorage(cfg.DataDir)
+	playlistStore := storage.NewPlaylistStorage(cfg.DataDir)
+
+	// Set gin mode
+	if cfg.Env == "production" {
+		gin.SetMode(gin.ReleaseMode)
+	}
+
+	// Create router
+	r := gin.Default()
+
+	// Load HTML templates
+	r.LoadHTMLGlob("static/*.html")
+
+	// Static files
+	r.Static("/static", "./static")
+
+	// Public routes
+	r.GET("/", func(c *gin.Context) {
+		c.Redirect(302, "/login")
+	})
+	r.GET("/login", handlers.LoginPage)
+	r.POST("/api/login", handlers.Login(cfg))
+	
+	// Protected routes - Videos
+	r.GET("/api/videos", handlers.AuthMiddleware(cfg), handlers.VideoListHandler(cfg, videoStore))
+	r.GET("/api/video/*filename", handlers.AuthMiddleware(cfg), handlers.StreamVideo(cfg))
+	r.GET("/api/thumbnail", handlers.AuthMiddleware(cfg), handlers.GetThumbnail(cfg))
+	r.POST("/api/view", handlers.AuthMiddleware(cfg), handlers.VideoViewHandler(cfg, videoStore))
+	r.POST("/api/like", handlers.AuthMiddleware(cfg), handlers.VideoLikeHandler(cfg, videoStore))
+	
+	// Protected routes - Playlists
+	r.GET("/api/playlists", handlers.AuthMiddleware(cfg), handlers.PlaylistHandler(cfg, playlistStore))
+	r.POST("/api/playlists", handlers.AuthMiddleware(cfg), handlers.CreatePlaylistHandler(cfg, playlistStore))
+	r.GET("/api/playlists/:id", handlers.AuthMiddleware(cfg), handlers.GetPlaylistHandler(cfg, playlistStore))
+	r.PUT("/api/playlists/:id", handlers.AuthMiddleware(cfg), handlers.UpdatePlaylistHandler(cfg, playlistStore))
+	r.DELETE("/api/playlists/:id", handlers.AuthMiddleware(cfg), handlers.DeletePlaylistHandler(cfg, playlistStore))
+	r.POST("/api/playlists/add", handlers.AuthMiddleware(cfg), handlers.AddToPlaylistHandler(cfg, playlistStore))
+	r.DELETE("/api/playlists/:id/video", handlers.AuthMiddleware(cfg), handlers.RemoveFromPlaylistHandler(cfg, playlistStore))
+	
+	// Pages
+	r.GET("/player", handlers.AuthMiddleware(cfg), handlers.PlayerPage)
+	r.GET("/playlists", handlers.AuthMiddleware(cfg), func(c *gin.Context) {
+		c.HTML(200, "playlists.html", nil)
+	})
+	r.GET("/playlist.html", handlers.AuthMiddleware(cfg), func(c *gin.Context) {
+		c.HTML(200, "playlist.html", nil)
+	})
+
+	// Start server
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("🎬 Streamlet running on :%s", port)
+	log.Printf("📁 Video directory: %s", cfg.VideoDir)
+	log.Printf("📊 Data directory: %s", cfg.DataDir)
+	log.Fatal(r.Run(":" + port))
+}

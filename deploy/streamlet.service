@@ -1,0 +1,29 @@
+[Unit]
+Description=Streamlet Video Server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/streamlet
+ExecStart=/opt/streamlet/streamlet
+Restart=on-failure
+RestartSec=5
+
+# Environment
+Environment=VIDEO_DIR=/data/videos
+Environment=AUTH_USER=admin
+Environment=AUTH_PASS=change-me
+Environment=JWT_SECRET=change-me-to-random-string
+Environment=PORT=8080
+Environment=ENV=production
+
+# Security
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/streamlet /data/videos
+
+[Install]
+WantedBy=multi-user.target
