@@ -2,239 +2,140 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0F172A">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>播放列表详情 - Streamlet</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .video-card:hover { transform: translateY(-2px); }
-        .thumbnail-placeholder {
-            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-        }
-        .toast-enter { animation: slideIn 0.3s ease-out; }
-        .toast-exit { animation: slideOut 0.3s ease-in forwards; }
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slideOut {
-            from { transform: translateX(0); opacity: 1; }
-            to { transform: translateX(100%); opacity: 0; }
-        }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; -webkit-tap-highlight-color: transparent; }
+        .video-card:active { background: rgba(59, 130, 246, 0.1); }
+        .toast-enter { animation: slideUp 0.3s ease-out; }
+        .toast-exit { animation: slideDown 0.3s ease-in forwards; }
+        @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        @keyframes slideDown { from { transform: translateY(0); opacity: 1; } to { transform: translateY(100%); opacity: 0; } }
+        .safe-top { padding-top: env(safe-area-inset-top); }
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
     </style>
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: {
-                        primary: '#0F172A',
-                        accent: '#3B82F6',
-                    }
-                }
-            }
-        }
+        tailwind.config = { theme: { extend: { colors: { primary: '#0F172A', accent: '#3B82F6' } } } }
     </script>
 </head>
-<body class="bg-slate-900 min-h-screen">
-    <!-- Toast Container -->
-    <div id="toastContainer" class="fixed top-20 right-4 z-[60] flex flex-col gap-2 max-w-sm"></div>
+<body class="bg-slate-900 min-h-screen safe-top safe-bottom">
+    <div id="toastContainer" class="fixed bottom-20 left-4 right-4 z-[60] flex flex-col items-center gap-2 pointer-events-none"></div>
 
-    <!-- Navbar -->
-    <nav class="fixed top-0 left-0 right-0 bg-slate-800/80 backdrop-blur-lg border-b border-slate-700/50 z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <div class="flex items-center gap-3">
-                    <a href="/playlists" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                        <div class="w-8 h-8 bg-accent rounded-lg flex items-center justify-center">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </div>
-                        <span class="text-white font-semibold text-lg">Streamlet</span>
-                    </a>
-                </div>
-
-                <div class="flex items-center gap-4">
-                    <a href="/player" class="px-4 py-2 text-slate-300 hover:text-white transition-colors duration-200 cursor-pointer">
-                        视频库
-                    </a>
-                    <a href="/playlists" class="px-4 py-2 text-slate-300 hover:text-white transition-colors duration-200 cursor-pointer">
-                        播放列表
-                    </a>
-
-                    <button
-                        onclick="logout()"
-                        class="px-4 py-2 text-slate-400 hover:text-white transition-colors duration-200 cursor-pointer"
-                        aria-label="退出登录"
-                    >
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                        </svg>
-                    </button>
-                </div>
+    <!-- Header -->
+    <header class="fixed top-0 left-0 right-0 bg-slate-800/95 backdrop-blur-lg border-b border-slate-700/50 z-50 safe-top">
+        <div class="px-4 py-3 flex items-center gap-3">
+            <a href="/playlists" class="p-2 -ml-2 text-white active:bg-slate-700 rounded-lg">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                </svg>
+            </a>
+            <div class="flex-1 min-w-0">
+                <h1 id="playlistTitle" class="text-white font-semibold truncate">加载中...</h1>
+                <p id="videoCount" class="text-slate-400 text-sm"></p>
             </div>
+            <button onclick="playAll()" id="playAllBtn" class="hidden px-3 py-2 bg-accent active:bg-blue-700 text-white text-sm font-medium rounded-xl">
+                播放全部
+            </button>
         </div>
-    </nav>
+    </header>
 
     <!-- Main Content -->
-    <main class="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <!-- Header -->
-        <div class="mb-8">
-            <div class="flex items-center gap-2 text-slate-400 text-sm mb-2">
-                <a href="/playlists" class="hover:text-white cursor-pointer">播放列表</a>
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                </svg>
-                <span id="playlistName" class="text-white">加载中...</span>
-            </div>
-            <div class="flex items-center justify-between">
-                <div>
-                    <h1 id="playlistTitle" class="text-2xl font-bold text-white">加载中...</h1>
-                    <p id="playlistDesc" class="text-slate-400 mt-1"></p>
-                </div>
-                <button
-                    onclick="playAll()"
-                    id="playAllBtn"
-                    class="hidden px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-xl transition-colors duration-200 cursor-pointer flex items-center gap-2"
-                >
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
-                    播放全部
-                </button>
-            </div>
+    <main class="pt-20 pb-20 px-4">
+        <div id="videoList" class="space-y-2">
+            <div class="animate-pulse bg-slate-800 rounded-xl h-16"></div>
+            <div class="animate-pulse bg-slate-800 rounded-xl h-16"></div>
+            <div class="animate-pulse bg-slate-800 rounded-xl h-16"></div>
         </div>
 
-        <!-- Video List -->
-        <div id="videoList" class="space-y-3">
-            <!-- Loading skeleton -->
-            <div class="animate-pulse bg-slate-800 rounded-xl h-20"></div>
-            <div class="animate-pulse bg-slate-800 rounded-xl h-20"></div>
-            <div class="animate-pulse bg-slate-800 rounded-xl h-20"></div>
-        </div>
-
-        <!-- Empty State -->
-        <div id="emptyState" class="hidden text-center py-20">
+        <div id="emptyState" class="hidden text-center py-16">
             <svg class="mx-auto w-16 h-16 text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
             </svg>
-            <p class="text-slate-400 text-lg">播放列表为空</p>
-            <a href="/player" class="text-accent hover:text-blue-400 text-sm mt-2 inline-block cursor-pointer">去视频库添加视频</a>
+            <p class="text-slate-400">播放列表为空</p>
+            <a href="/player" class="text-accent text-sm mt-2 inline-block">去视频库添加</a>
         </div>
     </main>
 
-    <!-- Remove Video Confirmation Modal -->
-    <div id="removeModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-sm">
-            <div class="text-center">
-                <div class="mx-auto w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
-                    <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                </div>
-                <h3 class="text-lg font-semibold text-white mb-2">移除视频</h3>
-                <p class="text-slate-400 mb-6">确定要从播放列表中移除这个视频吗？</p>
-                <div class="flex gap-3">
-                    <button
-                        onclick="hideRemoveModal()"
-                        class="flex-1 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-xl transition-colors duration-200 cursor-pointer"
-                    >
-                        取消
-                    </button>
-                    <button
-                        onclick="confirmRemove()"
-                        class="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white font-medium rounded-xl transition-colors duration-200 cursor-pointer"
-                    >
-                        移除
-                    </button>
-                </div>
+    <!-- Remove Modal -->
+    <div id="removeModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+        <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-sm text-center">
+            <div class="mx-auto w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
+                <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-white mb-2">移除视频</h3>
+            <p class="text-slate-400 text-sm mb-6">确定要移除这个视频吗？</p>
+            <div class="flex gap-3">
+                <button onclick="hideRemoveModal()" class="flex-1 py-3 bg-slate-700 active:bg-slate-600 text-white font-medium rounded-xl">取消</button>
+                <button onclick="confirmRemove()" class="flex-1 py-3 bg-red-500 active:bg-red-600 text-white font-medium rounded-xl">移除</button>
             </div>
         </div>
     </div>
 
-    <script>
-        let playlistId = null;
-        let playlist = null;
-        let removeVideoPath = null;
+    <!-- Bottom Nav -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-slate-800/95 backdrop-blur-lg border-t border-slate-700/50 safe-bottom z-40">
+        <div class="flex items-center justify-around py-2">
+            <a href="/player" class="flex flex-col items-center py-2 px-4 text-slate-400">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                </svg>
+                <span class="text-xs mt-1">视频</span>
+            </a>
+            <a href="/playlists" class="flex flex-col items-center py-2 px-4 text-accent">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2"/>
+                </svg>
+                <span class="text-xs mt-1">列表</span>
+            </a>
+        </div>
+    </nav>
 
-        // Toast notification system
+    <script>
+        let playlistId = null, playlist = null, removeVideoPath = null;
+
         function showToast(message, type = 'success') {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
             const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
             const icon = type === 'success' 
                 ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
-                : type === 'error'
-                ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>'
-                : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
-            
-            toast.className = `toast-enter ${bgColor} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3`;
-            toast.innerHTML = `${icon}<span class="font-medium">${message}</span>`;
+                : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
+            toast.className = `toast-enter ${bgColor} text-white px-4 py-2 rounded-xl shadow-lg flex items-center gap-2 pointer-events-auto`;
+            toast.innerHTML = `${icon}<span class="text-sm font-medium">${message}</span>`;
             container.appendChild(toast);
-
-            setTimeout(() => {
-                toast.classList.remove('toast-enter');
-                toast.classList.add('toast-exit');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
+            setTimeout(() => { toast.classList.add('toast-exit'); setTimeout(() => toast.remove(), 300); }, 2000);
         }
 
-        // Get playlist ID from URL
         const urlParams = new URLSearchParams(window.location.search);
         playlistId = urlParams.get('id');
+        if (!playlistId) window.location.href = '/playlists';
 
-        if (!playlistId) {
-            window.location.href = '/playlists';
-        }
-
-        // Format size
         function formatSize(bytes) {
-            if (!bytes) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
+            if (!bytes) return '';
+            const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
-        // Render video item
         function renderVideo(video, index) {
             const thumbnailUrl = `/api/thumbnail?video=${encodeURIComponent(video.path)}`;
             return `
-                <div class="video-card bg-slate-800 rounded-xl overflow-hidden border border-slate-700/50 hover:border-accent/50 transition-all duration-200 flex">
-                    <a href="/player?v=${encodeURIComponent(video.path)}&playlist=${playlistId}&index=${index}" 
-                       class="flex-shrink-0 w-32 aspect-video thumbnail-placeholder flex items-center justify-center relative overflow-hidden">
-                        <img 
-                            src="${thumbnailUrl}" 
-                            alt="${video.name}"
-                            class="w-full h-full object-cover"
-                            onerror="this.style.display='none';"
-                        >
-                        <div class="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity duration-200">
-                            <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                            </svg>
-                        </div>
-                        <div class="absolute top-1 left-1 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded text-white text-xs">
-                            ${index + 1}
-                        </div>
+                <div class="video-card bg-slate-800 rounded-xl border border-slate-700/50 overflow-hidden flex">
+                    <a href="/player?v=${encodeURIComponent(video.path)}&playlist=${playlistId}&index=${index}" class="flex-shrink-0 w-28 aspect-video relative overflow-hidden">
+                        <img src="${thumbnailUrl}" alt="${video.name}" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'">
+                        <div class="absolute top-1 left-1 bg-black/70 px-1.5 py-0.5 rounded text-white text-xs">${index + 1}</div>
                     </a>
-                    <div class="flex-1 p-4 flex items-center justify-between">
-                        <div class="flex-1 min-w-0">
-                            <h3 class="text-white font-medium truncate" title="${video.name}">${video.name}</h3>
-                            <div class="flex items-center gap-3 mt-1 text-sm text-slate-400">
-                                <span>${formatSize(video.size)}</span>
-                                ${video.views ? `<span>• ${video.views} 次播放</span>` : ''}
-                            </div>
+                    <div class="flex-1 p-3 flex items-center justify-between min-w-0">
+                        <div class="min-w-0 flex-1">
+                            <h3 class="text-white text-sm font-medium truncate">${video.name}</h3>
+                            <p class="text-slate-500 text-xs mt-1">${formatSize(video.size)}${video.views ? ' · ' + video.views + ' 次播放' : ''}</p>
                         </div>
-                        <button
-                            onclick="showRemoveModal('${video.path}')"
-                            class="ml-4 p-2 text-slate-500 hover:text-red-400 transition-colors duration-200 cursor-pointer"
-                            title="从播放列表移除"
-                            aria-label="从播放列表移除"
-                        >
+                        <button onclick="showRemoveModal('${video.path}')" class="ml-2 p-2 text-slate-500 active:text-red-400 active:bg-slate-700 rounded-lg flex-shrink-0" aria-label="移除">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
                             </svg>
@@ -244,123 +145,69 @@
             `;
         }
 
-        // Render video list
         function renderVideos(videos) {
             const list = document.getElementById('videoList');
             const empty = document.getElementById('emptyState');
             const playAllBtn = document.getElementById('playAllBtn');
+            const videoCount = document.getElementById('videoCount');
 
-            if (!videos || videos.length === 0) {
+            if (!videos?.length) {
                 list.classList.add('hidden');
                 empty.classList.remove('hidden');
                 playAllBtn.classList.add('hidden');
+                videoCount.textContent = '0 个视频';
                 return;
             }
-
             list.classList.remove('hidden');
             empty.classList.add('hidden');
             playAllBtn.classList.remove('hidden');
+            videoCount.textContent = videos.length + ' 个视频';
             list.innerHTML = videos.map((v, i) => renderVideo(v, i)).join('');
         }
 
-        // Fetch playlist
         async function fetchPlaylist() {
             try {
-                const response = await fetch(`/api/playlists/${playlistId}`);
-                if (response.status === 401) {
-                    window.location.href = '/login';
-                    return;
-                }
-                if (response.status === 404) {
-                    window.location.href = '/playlists';
-                    return;
-                }
-
-                playlist = await response.json();
-                
-                // Update header
-                document.getElementById('playlistName').textContent = playlist.name;
+                const res = await fetch(`/api/playlists/${playlistId}`);
+                if (res.status === 401) { window.location.href = '/login'; return; }
+                if (res.status === 404) { window.location.href = '/playlists'; return; }
+                playlist = await res.json();
                 document.getElementById('playlistTitle').textContent = playlist.name;
-                document.getElementById('playlistDesc').textContent = playlist.description || '';
-                document.title = `${playlist.name} - Streamlet`;
-
-                // Fetch video details
+                document.title = playlist.name + ' - Streamlet';
                 await fetchVideos();
-            } catch (err) {
-                console.error('Failed to fetch playlist:', err);
-            }
+            } catch (e) {}
         }
 
-        // Fetch video details
         async function fetchVideos() {
-            if (!playlist.videos || playlist.videos.length === 0) {
-                renderVideos([]);
-                return;
-            }
-
+            if (!playlist.videos?.length) { renderVideos([]); return; }
             try {
-                // Fetch all videos to get details
-                const response = await fetch('/api/videos?pageSize=200');
-                const data = await response.json();
-                
-                // Create a map of path -> video
+                const res = await fetch('/api/videos?pageSize=200');
+                const data = await res.json();
                 const videoMap = {};
-                for (const v of data.videos) {
-                    videoMap[v.path] = v;
-                }
-
-                // Map playlist videos to full video info
+                data.videos?.forEach(v => videoMap[v.path] = v);
                 const videos = playlist.videos.map(path => videoMap[path] || { path, name: path.split('/').pop() });
                 renderVideos(videos);
-            } catch (err) {
-                console.error('Failed to fetch videos:', err);
-            }
+            } catch (e) {}
         }
 
-        // Play all
         function playAll() {
-            if (playlist.videos && playlist.videos.length > 0) {
+            if (playlist.videos?.length) {
                 window.location.href = `/player?v=${encodeURIComponent(playlist.videos[0])}&playlist=${playlistId}&index=0`;
             }
         }
 
-        // Show remove modal
-        function showRemoveModal(videoPath) {
-            removeVideoPath = videoPath;
-            document.getElementById('removeModal').classList.remove('hidden');
-        }
+        function showRemoveModal(videoPath) { removeVideoPath = videoPath; document.getElementById('removeModal').classList.remove('hidden'); }
+        function hideRemoveModal() { document.getElementById('removeModal').classList.add('hidden'); removeVideoPath = null; }
 
-        // Hide remove modal
-        function hideRemoveModal() {
-            document.getElementById('removeModal').classList.add('hidden');
-            removeVideoPath = null;
-        }
-
-        // Confirm remove
         async function confirmRemove() {
             if (!removeVideoPath) return;
-
             try {
-                const response = await fetch(`/api/playlists/${playlistId}/video?video=${encodeURIComponent(removeVideoPath)}`, {
-                    method: 'DELETE'
-                });
-                if (response.ok) {
-                    hideRemoveModal();
-                    showToast('视频已从播放列表移除');
-                    fetchPlaylist();
-                }
-            } catch (err) {
-                showToast('移除失败', 'error');
-            }
+                const res = await fetch(`/api/playlists/${playlistId}/video?video=${encodeURIComponent(removeVideoPath)}`, { method: 'DELETE' });
+                if (res.ok) { hideRemoveModal(); showToast('已移除'); fetchPlaylist(); }
+            } catch (e) { showToast('移除失败', 'error'); }
         }
 
-        // Logout
-        function logout() {
-            document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-            window.location.href = '/login';
-        }
+        document.getElementById('removeModal').addEventListener('click', (e) => { if (e.target.id === 'removeModal') hideRemoveModal(); });
 
-        // Initial load
         fetchPlaylist();
     </script>
 </body>

@@ -2,380 +2,233 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>播放 - Streamlet</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
+        * { box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; 
+            margin: 0;
+            padding: 0;
+            background: #000;
+            overflow: hidden;
+            height: 100vh;
+            height: 100dvh;
+        }
         video {
+            width: 100%;
+            height: 100%;
             outline: none;
         }
-        video::-webkit-media-controls-panel {
-            background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
-        }
-        .nav-btn:disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-        }
-        .nav-btn:not(:disabled):hover {
-            background: rgba(59, 130, 246, 0.3);
-        }
-        .playlist-item {
-            transition: all 0.2s ease;
-        }
-        .playlist-item:hover {
-            background: rgba(59, 130, 246, 0.1);
-        }
-        .playlist-item.active {
-            background: rgba(59, 130, 246, 0.2);
-            border-left: 3px solid #3B82F6;
-        }
-        .toast-enter { animation: slideIn 0.3s ease-out; }
-        .toast-exit { animation: slideOut 0.3s ease-in forwards; }
-        @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        @keyframes slideOut {
-            from { transform: translateX(0); opacity: 1; }
-            to { transform: translateX(100%); opacity: 0; }
-        }
-        .sidebar-transition {
-            transition: width 0.3s ease, opacity 0.3s ease;
-        }
+        .safe-top { padding-top: env(safe-area-inset-top); }
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    colors: {
-                        primary: '#0F172A',
-                        accent: '#3B82F6',
-                    }
+                    colors: { accent: '#3B82F6' }
                 }
             }
         }
     </script>
 </head>
-<body class="bg-slate-900 min-h-screen">
+<body>
     <!-- Toast Container -->
-    <div id="toastContainer" class="fixed top-20 right-4 z-[60] flex flex-col gap-2 max-w-sm"></div>
+    <div id="toastContainer" class="fixed top-4 left-4 right-4 z-[100] flex flex-col items-center gap-2 pointer-events-none"></div>
 
-    <!-- Navbar -->
-    <nav class="fixed top-0 left-0 right-0 bg-slate-800/80 backdrop-blur-lg border-b border-slate-700/50 z-50">
-        <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <div class="flex items-center gap-3">
-                    <a href="/player" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                        <div class="w-8 h-8 bg-accent rounded-lg flex items-center justify-center">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </div>
-                        <span class="text-white font-semibold text-lg">Streamlet</span>
-                    </a>
-                </div>
-
-                <div class="flex items-center gap-4">
-                    <!-- Playlist info (shown when in playlist mode) -->
-                    <div id="playlistHeader" class="hidden items-center gap-3">
-                        <div class="h-6 w-px bg-slate-600"></div>
-                        <a href="/playlists" class="text-slate-300 hover:text-white transition-colors cursor-pointer">
-                            播放列表
-                        </a>
-                        <svg class="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                        </svg>
-                        <span id="playlistNameHeader" class="text-white font-medium"></span>
-                    </div>
-
-                    <a href="/player" class="px-4 py-2 text-slate-300 hover:text-white transition-colors duration-200 cursor-pointer flex items-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
-                        </svg>
-                        <span class="hidden sm:inline">视频列表</span>
-                    </a>
-
-                    <button
-                        onclick="logout()"
-                        class="px-4 py-2 text-slate-400 hover:text-white transition-colors duration-200 cursor-pointer"
-                        aria-label="退出登录"
-                    >
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
-                        </svg>
-                    </button>
-                </div>
+    <!-- Main Container -->
+    <div class="h-full flex flex-col">
+        <!-- Top Bar (outside video area) -->
+        <header class="bg-black/90 safe-top flex-shrink-0">
+            <div class="px-3 py-2 flex items-center gap-2">
+                <a href="/player" class="p-2 text-white active:bg-white/10 rounded-lg flex-shrink-0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                    </svg>
+                </a>
+                <h1 id="videoTitle" class="flex-1 text-white text-sm font-medium truncate text-center"></h1>
+                <button onclick="toggleSidebar()" class="p-2 text-white active:bg-white/10 rounded-lg flex-shrink-0">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
+                </button>
             </div>
+        </header>
+
+        <!-- Video Container (no overlays) -->
+        <div class="flex-1 bg-black relative overflow-hidden">
+            <video
+                id="videoPlayer"
+                playsinline
+                webkit-playsinline
+                x5-video-player-type="h5"
+                x5-video-player-fullscreen="true"
+                controls
+                autoplay
+                preload="metadata"
+            >
+                <source src="" type="video/mp4">
+            </video>
         </div>
-    </nav>
 
-    <!-- Main Content -->
-    <main class="pt-16 min-h-screen flex bg-black">
-        <!-- Video Player Area -->
-        <div id="videoArea" class="flex-1 flex items-center justify-center p-4 transition-all duration-300">
-            <div class="w-full max-w-5xl mx-auto">
-                <!-- Video Title -->
-                <div class="mb-4">
-                    <h1 id="videoTitle" class="text-white text-xl font-semibold truncate"></h1>
-                    <p id="videoSubtitle" class="text-slate-400 text-sm mt-1 hidden"></p>
-                </div>
-
-                <!-- Video Container with Navigation -->
-                <div class="relative bg-black rounded-xl overflow-hidden">
-                    <!-- Previous Button Overlay -->
-                    <button
-                        id="prevOverlay"
-                        onclick="playPrevious()"
-                        class="nav-btn absolute left-4 top-1/2 -translate-y-1/2 w-14 h-14 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center text-white opacity-0 hover:opacity-100 transition-opacity duration-200 z-10"
-                        aria-label="上一个视频"
-                    >
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <!-- Bottom Bar (outside video area) -->
+        <footer class="bg-black/90 safe-bottom flex-shrink-0">
+            <div class="px-3 py-2">
+                <!-- Playlist Navigation -->
+                <div id="progressIndicator" class="hidden mb-2 flex items-center justify-center gap-3 text-white text-sm">
+                    <button id="prevBtn" onclick="playPrevious()" disabled class="p-2 text-white active:bg-white/10 rounded-lg disabled:opacity-30">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
                         </svg>
                     </button>
-
-                    <!-- Video Element -->
-                    <video
-                        id="videoPlayer"
-                        controls
-                        autoplay
-                        class="w-full aspect-video"
-                        preload="metadata"
-                    >
-                        <source src="" type="video/mp4">
-                        您的浏览器不支持视频播放
-                    </video>
-
-                    <!-- Next Button Overlay -->
-                    <button
-                        id="nextOverlay"
-                        onclick="playNext()"
-                        class="nav-btn absolute right-4 top-1/2 -translate-y-1/2 w-14 h-14 bg-black/50 backdrop-blur-sm rounded-full flex items-center justify-center text-white opacity-0 hover:opacity-100 transition-opacity duration-200 z-10"
-                        aria-label="下一个视频"
-                    >
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <span class="text-slate-400">
+                        <span id="currentIndex" class="text-white font-semibold">1</span> / <span id="totalCount">1</span>
+                    </span>
+                    <button id="nextBtn" onclick="playNext()" disabled class="p-2 text-white active:bg-white/10 rounded-lg disabled:opacity-30">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
                         </svg>
                     </button>
-
-                    <!-- Progress indicator (playlist mode) -->
-                    <div id="progressIndicator" class="hidden absolute bottom-16 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur-sm px-4 py-2 rounded-full text-white text-sm">
-                        <span id="currentIndex">1</span> / <span id="totalCount">1</span>
-                    </div>
                 </div>
-
-                <!-- Video Controls Bar -->
-                <div class="mt-4 flex items-center justify-between">
-                    <!-- Navigation Buttons -->
-                    <div class="flex items-center gap-2">
-                        <button
-                            id="prevBtn"
-                            onclick="playPrevious()"
-                            disabled
-                            class="nav-btn px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors duration-200 cursor-pointer text-white flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
-                            </svg>
-                            <span class="hidden sm:inline">上一个</span>
-                        </button>
-                        <button
-                            id="nextBtn"
-                            onclick="playNext()"
-                            disabled
-                            class="nav-btn px-4 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors duration-200 cursor-pointer text-white flex items-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
-                        >
-                            <span class="hidden sm:inline">下一个</span>
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                            </svg>
-                        </button>
-
-                        <!-- Autoplay toggle -->
-                        <button
-                            id="autoplayBtn"
-                            onclick="toggleAutoplay()"
-                            class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors duration-200 cursor-pointer text-slate-300 hover:text-white flex items-center gap-2"
-                            title="自动播放下一个"
-                        >
-                            <svg id="autoplayIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                            </svg>
-                            <span class="hidden sm:inline">自动播放</span>
-                            <span id="autoplayStatus" class="text-xs text-green-400">开</span>
-                        </button>
+                <!-- Controls -->
+                <div class="flex items-center justify-between">
+                    <div id="playlistHeader" class="hidden text-slate-400 text-xs truncate">
+                        📋 <span id="playlistNameHeader" class="text-white"></span>
                     </div>
-
-                    <!-- Speed Control -->
-                    <div class="flex items-center gap-2">
-                        <button
-                            onclick="changePlaybackSpeed()"
-                            id="speedBtn"
-                            class="px-3 py-2 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors duration-200 cursor-pointer text-white"
-                        >
-                            1.0x
+                    <div class="flex items-center gap-2 ml-auto">
+                        <button onclick="toggleAutoplay()" id="autoplayBtn" class="px-2 py-1 text-white text-xs active:bg-white/10 rounded flex items-center gap-1">
+                            <span id="autoplayText">自动✓</span>
                         </button>
+                        <button onclick="changePlaybackSpeed()" id="speedBtn" class="px-2 py-1 text-white text-xs active:bg-white/10 rounded">1.0x</button>
                     </div>
                 </div>
             </div>
-        </div>
+        </footer>
+    </div>
 
-        <!-- Playlist Sidebar -->
-        <div id="playlistSidebar" class="hidden w-80 bg-slate-900 border-l border-slate-700 flex flex-col sidebar-transition">
-            <div class="p-4 border-b border-slate-700">
+    <!-- Playlist Sidebar -->
+    <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/50 z-40" onclick="toggleSidebar()"></div>
+    <div id="playlistSidebar" class="fixed top-0 right-0 bottom-0 w-80 max-w-[85vw] bg-slate-900 transform translate-x-full transition-transform duration-300 z-50 flex flex-col">
+        <div class="p-4 border-b border-slate-700 safe-top">
+            <div class="flex items-center justify-between">
                 <h2 class="text-white font-semibold">播放列表</h2>
-                <p id="sidebarPlaylistName" class="text-slate-400 text-sm mt-1"></p>
+                <button onclick="toggleSidebar()" class="p-2 text-slate-400 active:bg-slate-700 rounded-lg">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
             </div>
-            <div id="playlistItems" class="flex-1 overflow-y-auto">
-                <!-- Playlist items will be inserted here -->
-            </div>
+            <p id="sidebarPlaylistName" class="text-slate-400 text-sm mt-1"></p>
         </div>
-    </main>
+        <div id="playlistItems" class="flex-1 overflow-y-auto hide-scrollbar"></div>
+    </div>
 
     <!-- Error Modal -->
-    <div id="errorModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-        <div class="bg-slate-800 rounded-2xl p-8 max-w-md text-center">
-            <svg class="mx-auto w-16 h-16 text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <div id="errorModal" class="hidden fixed inset-0 bg-black flex items-center justify-center z-[60] p-4">
+        <div class="bg-slate-800 rounded-2xl p-6 max-w-sm text-center">
+            <svg class="mx-auto w-12 h-12 text-red-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
             </svg>
-            <h2 class="text-white text-xl font-semibold mb-2">视频加载失败</h2>
-            <p id="errorMessage" class="text-slate-400 mb-6">无法加载视频文件</p>
-            <a href="/player" class="inline-block px-6 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-xl transition-colors duration-200 cursor-pointer">
-                返回列表
-            </a>
+            <h2 class="text-white text-lg font-semibold mb-2">加载失败</h2>
+            <p id="errorMessage" class="text-slate-400 text-sm mb-4"></p>
+            <a href="/player" class="inline-block px-6 py-2 bg-accent text-white font-medium rounded-xl">返回列表</a>
         </div>
     </div>
 
     <script>
         const video = document.getElementById('videoPlayer');
         const videoTitle = document.getElementById('videoTitle');
-        const videoSubtitle = document.getElementById('videoSubtitle');
         const errorModal = document.getElementById('errorModal');
         const errorMessage = document.getElementById('errorMessage');
         const speedBtn = document.getElementById('speedBtn');
-
-        // Navigation elements
         const prevBtn = document.getElementById('prevBtn');
         const nextBtn = document.getElementById('nextBtn');
-        const prevOverlay = document.getElementById('prevOverlay');
-        const nextOverlay = document.getElementById('nextOverlay');
         const progressIndicator = document.getElementById('progressIndicator');
         const playlistHeader = document.getElementById('playlistHeader');
         const playlistNameHeader = document.getElementById('playlistNameHeader');
         const playlistSidebar = document.getElementById('playlistSidebar');
+        const sidebarOverlay = document.getElementById('sidebarOverlay');
         const sidebarPlaylistName = document.getElementById('sidebarPlaylistName');
         const playlistItems = document.getElementById('playlistItems');
         const currentIndexEl = document.getElementById('currentIndex');
         const totalCountEl = document.getElementById('totalCount');
-        const autoplayStatus = document.getElementById('autoplayStatus');
+        const autoplayBtn = document.getElementById('autoplayBtn');
+        const autoplayText = document.getElementById('autoplayText');
 
         const speeds = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
         let currentSpeedIndex = 2;
         let autoplay = true;
 
-        // Playlist state
         let playlistId = null;
-        let playlist = null;
         let videos = [];
         let currentIndex = 0;
+        let lastVideoMap = {};
 
-        // Toast notification
+        let autoPlaylist = null;
+        let autoPage = 1;
+        let autoPageSize = 50;
+        let autoSort = 'modified';
+        let autoSearch = '';
+
         function showToast(message, type = 'success') {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
             const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
-            const icon = type === 'success' 
-                ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
-                : type === 'error'
-                ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>'
-                : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
-            
-            toast.className = `toast-enter ${bgColor} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3`;
-            toast.innerHTML = `${icon}<span class="font-medium">${message}</span>`;
+            toast.className = `${bgColor} text-white px-4 py-2 rounded-xl shadow-lg text-sm font-medium pointer-events-auto`;
+            toast.textContent = message;
             container.appendChild(toast);
-
-            setTimeout(() => {
-                toast.classList.remove('toast-enter');
-                toast.classList.add('toast-exit');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
+            setTimeout(() => toast.remove(), 2000);
         }
 
-        // Get URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         const videoPath = urlParams.get('v');
         playlistId = urlParams.get('playlist');
         currentIndex = parseInt(urlParams.get('index') || '0', 10);
 
-        // Auto-playlist parameters
-        const autoPlaylist = urlParams.get('autoPlaylist');
-        const autoPage = parseInt(urlParams.get('page') || '1', 10);
-        const autoPageSize = parseInt(urlParams.get('pageSize') || '50', 10);
-        const autoSort = urlParams.get('sort') || 'modified';
-        const autoSearch = urlParams.get('search') || '';
+        autoPlaylist = urlParams.get('autoPlaylist');
+        autoPage = parseInt(urlParams.get('page') || '1', 10);
+        autoPageSize = parseInt(urlParams.get('pageSize') || '50', 10);
+        autoSort = urlParams.get('sort') || 'modified';
+        autoSearch = urlParams.get('search') || '';
 
         if (!videoPath) {
             showError('未指定视频文件');
         } else {
             loadVideo(videoPath);
-            
-            if (playlistId) {
-                loadPlaylist();
-            } else if (autoPlaylist === '1') {
-                loadAutoPlaylist();
-            }
+            if (playlistId) loadPlaylist();
+            else if (autoPlaylist === '1') loadAutoPlaylist();
         }
 
-        // Load video
         function loadVideo(path) {
             video.src = `/api/video/${encodeURIComponent(path)}`;
             videoTitle.textContent = decodeURIComponent(path.split('/').pop());
+            document.title = videoTitle.textContent + ' - Streamlet';
         }
 
-        // Load playlist
         async function loadPlaylist() {
             try {
-                const response = await fetch(`/api/playlists/${playlistId}`);
-                if (!response.ok) return;
-
-                playlist = await response.json();
+                const res = await fetch(`/api/playlists/${playlistId}`);
+                if (!res.ok) return;
+                const playlist = await res.json();
                 videos = playlist.videos || [];
-
-                // Update header
                 playlistHeader.classList.remove('hidden');
-                playlistHeader.classList.add('flex');
                 playlistNameHeader.textContent = playlist.name;
-
-                // Update sidebar
                 sidebarPlaylistName.textContent = playlist.name;
-
-                // Update progress indicator
                 progressIndicator.classList.remove('hidden');
                 currentIndexEl.textContent = currentIndex + 1;
                 totalCountEl.textContent = videos.length;
-
-                // Update navigation buttons
-                updateNavigation();
-
-                // Load video details and render sidebar
+                updateNav();
                 await loadVideoDetails();
-
-                // Show sidebar
-                playlistSidebar.classList.remove('hidden');
-
-                // Show subtitle
-                videoSubtitle.classList.remove('hidden');
-                videoSubtitle.textContent = `播放列表: ${playlist.name}`;
-
-            } catch (err) {
-                console.error('Failed to load playlist:', err);
-            }
+            } catch (e) {}
         }
 
-        // Load auto-playlist (from pagination context)
         async function loadAutoPlaylist() {
             try {
                 const params = new URLSearchParams();
@@ -383,302 +236,134 @@
                 params.set('pageSize', autoPageSize.toString());
                 params.set('sort', autoSort);
                 if (autoSearch) params.set('search', autoSearch);
-
-                const response = await fetch(`/api/videos?${params.toString()}`);
-                if (!response.ok) return;
-
-                const data = await response.json();
+                const res = await fetch(`/api/videos?${params}`);
+                if (!res.ok) return;
+                const data = await res.json();
                 videos = (data.videos || []).map(v => v.path);
-
-                // Build video map for sidebar
-                const videoMap = {};
-                for (const v of data.videos || []) {
-                    videoMap[v.path] = v;
-                }
-                lastVideoMap = videoMap;
-
-                // Update header - show "当前列表" instead of playlist name
+                const vm = {};
+                for (const v of data.videos || []) vm[v.path] = v;
+                lastVideoMap = vm;
                 playlistHeader.classList.remove('hidden');
-                playlistHeader.classList.add('flex');
                 playlistNameHeader.textContent = '当前列表';
-
-                // Update sidebar
-                sidebarPlaylistName.textContent = autoSearch 
-                    ? `搜索: "${autoSearch}" (${videos.length} 个视频)`
-                    : `第 ${autoPage} 页 (${videos.length} 个视频)`;
-
-                // Update progress indicator
+                sidebarPlaylistName.textContent = autoSearch ? `搜索: "${autoSearch}" (${videos.length})` : `第 ${autoPage} 页 (${videos.length})`;
                 progressIndicator.classList.remove('hidden');
                 currentIndexEl.textContent = currentIndex + 1;
                 totalCountEl.textContent = videos.length;
-
-                // Update navigation buttons
-                updateNavigation();
-
-                // Render sidebar
-                renderPlaylistSidebar(videoMap);
-
-                // Show sidebar
-                playlistSidebar.classList.remove('hidden');
-
-                // Show subtitle
-                videoSubtitle.classList.remove('hidden');
-                videoSubtitle.textContent = autoSearch 
-                    ? `搜索结果: "${autoSearch}"`
-                    : `第 ${autoPage} 页`;
-
-            } catch (err) {
-                console.error('Failed to load auto-playlist:', err);
-            }
+                updateNav();
+                renderSidebar(vm);
+            } catch (e) {}
         }
 
-        // Load video details for sidebar
         async function loadVideoDetails() {
             try {
-                const response = await fetch('/api/videos?pageSize=200');
-                const data = await response.json();
-
-                const videoMap = {};
-                for (const v of data.videos) {
-                    videoMap[v.path] = v;
-                }
-
-                renderPlaylistSidebar(videoMap);
-            } catch (err) {
-                console.error('Failed to load video details:', err);
-            }
+                const res = await fetch('/api/videos?pageSize=200');
+                const data = await res.json();
+                const vm = {};
+                for (const v of data.videos) vm[v.path] = v;
+                lastVideoMap = vm;
+                renderSidebar(vm);
+            } catch (e) {}
         }
 
-        // Render playlist sidebar
-        function renderPlaylistSidebar(videoMap) {
-            playlistItems.innerHTML = videos.map((path, index) => {
-                const v = videoMap[path] || { path, name: path.split('/').pop() };
-                const isActive = index === currentIndex;
-                const thumbnailUrl = `/api/thumbnail?video=${encodeURIComponent(path)}`;
-
+        function renderSidebar(vm) {
+            playlistItems.innerHTML = videos.map((path, i) => {
+                const v = vm[path] || { path, name: path.split('/').pop() };
+                const active = i === currentIndex;
                 return `
-                    <div 
-                        onclick="goToVideo(${index})"
-                        class="playlist-item p-3 flex gap-3 cursor-pointer ${isActive ? 'active' : ''}"
-                    >
-                        <div class="relative flex-shrink-0 w-24 aspect-video bg-slate-800 rounded-lg overflow-hidden">
-                            <img src="${thumbnailUrl}" alt="${v.name}" class="w-full h-full object-cover" onerror="this.style.display='none'">
-                            ${isActive ? '<div class="absolute inset-0 bg-accent/30 flex items-center justify-center"><svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>' : ''}
-                            <div class="absolute bottom-1 right-1 bg-black/70 px-1.5 py-0.5 rounded text-white text-xs">${index + 1}</div>
+                    <div onclick="goTo(${i})" class="flex gap-3 p-3 cursor-pointer ${active ? 'bg-accent/20 border-l-2 border-accent' : 'hover:bg-slate-800'}">
+                        <div class="w-16 h-10 bg-slate-800 rounded flex-shrink-0 overflow-hidden">
+                            <img src="/api/thumbnail?video=${encodeURIComponent(path)}" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'">
                         </div>
                         <div class="flex-1 min-w-0">
-                            <p class="text-white text-sm font-medium truncate ${isActive ? 'text-accent' : ''}">${v.name}</p>
-                            <p class="text-slate-500 text-xs mt-1">${v.views ? v.views + ' 次播放' : ''}</p>
+                            <p class="text-white text-sm truncate ${active ? 'text-accent font-medium' : ''}">${v.name}</p>
+                            <p class="text-slate-500 text-xs">${i + 1}/${videos.length}</p>
                         </div>
                     </div>
                 `;
             }).join('');
         }
 
-        // Update navigation buttons
-        function updateNavigation() {
-            const hasPrev = currentIndex > 0;
-            const hasNext = currentIndex < videos.length - 1;
-
-            prevBtn.disabled = !hasPrev;
-            nextBtn.disabled = !hasNext;
-            prevOverlay.disabled = !hasPrev;
-            nextOverlay.disabled = !hasNext;
-
+        function updateNav() {
+            prevBtn.disabled = currentIndex <= 0;
+            nextBtn.disabled = currentIndex >= videos.length - 1;
             currentIndexEl.textContent = currentIndex + 1;
             totalCountEl.textContent = videos.length;
         }
 
-        // Go to specific video
-        function goToVideo(index) {
-            if (index < 0 || index >= videos.length) return;
-
-            currentIndex = index;
+        function goTo(i) {
+            if (i < 0 || i >= videos.length) return;
+            currentIndex = i;
             loadVideo(videos[currentIndex]);
-            updateNavigation();
+            updateNav();
             updateUrl();
-            renderPlaylistSidebar.bind(null, getLastVideoMap())();
-
+            renderSidebar(lastVideoMap);
             video.play();
+            toggleSidebar();
         }
 
-        // Store last video map for re-render
-        let lastVideoMap = {};
-        function getLastVideoMap() {
-            return lastVideoMap;
-        }
-
-        // Patch loadVideoDetails to store videoMap
-        const originalLoadVideoDetails = loadVideoDetails;
-        loadVideoDetails = async function() {
-            try {
-                const response = await fetch('/api/videos?pageSize=200');
-                const data = await response.json();
-
-                const videoMap = {};
-                for (const v of data.videos) {
-                    videoMap[v.path] = v;
-                }
-
-                lastVideoMap = videoMap;
-                renderPlaylistSidebar(videoMap);
-            } catch (err) {
-                console.error('Failed to load video details:', err);
-            }
-        };
-
-        // Play previous video
         function playPrevious() {
-            if (currentIndex > 0) {
-                goToVideo(currentIndex - 1);
-                showToast('上一个视频');
-            }
+            if (currentIndex > 0) { goTo(currentIndex - 1); showToast('上一个'); }
         }
 
-        // Play next video
         function playNext() {
-            if (currentIndex < videos.length - 1) {
-                goToVideo(currentIndex + 1);
-                showToast('下一个视频');
-            }
+            if (currentIndex < videos.length - 1) { goTo(currentIndex + 1); showToast('下一个'); }
         }
 
-        // Update URL without reload
         function updateUrl() {
             const url = new URL(window.location);
             url.searchParams.set('v', videos[currentIndex]);
             url.searchParams.set('index', currentIndex.toString());
-            if (playlistId) {
-                url.searchParams.set('playlist', playlistId);
-            } else if (autoPlaylist === '1') {
+            if (playlistId) url.searchParams.set('playlist', playlistId);
+            else if (autoPlaylist === '1') {
                 url.searchParams.set('autoPlaylist', '1');
                 url.searchParams.set('page', autoPage.toString());
                 url.searchParams.set('pageSize', autoPageSize.toString());
                 url.searchParams.set('sort', autoSort);
                 if (autoSearch) url.searchParams.set('search', autoSearch);
             }
-            window.history.pushState({}, '', url);
+            history.pushState({}, '', url);
         }
 
-        // Toggle autoplay
         function toggleAutoplay() {
             autoplay = !autoplay;
-            autoplayStatus.textContent = autoplay ? '开' : '关';
-            autoplayStatus.className = autoplay ? 'text-xs text-green-400' : 'text-xs text-slate-400';
-            showToast(autoplay ? '自动播放已开启' : '自动播放已关闭', 'info');
+            autoplayText.textContent = autoplay ? '自动✓' : '自动';
+            showToast(autoplay ? '自动播放开启' : '自动播放关闭', 'info');
         }
 
-        // Video ended - auto play next
-        video.addEventListener('ended', () => {
-            if (playlistId && autoplay && currentIndex < videos.length - 1) {
-                playNext();
-            }
-        });
-
-        // Show/hide overlay buttons on mouse move
-        let hideTimeout;
-        const videoContainer = video.parentElement;
-
-        videoContainer.addEventListener('mousemove', () => {
-            prevOverlay.style.opacity = '1';
-            nextOverlay.style.opacity = '1';
-            clearTimeout(hideTimeout);
-            hideTimeout = setTimeout(() => {
-                prevOverlay.style.opacity = '0';
-                nextOverlay.style.opacity = '0';
-            }, 2000);
-        });
-
-        videoContainer.addEventListener('mouseleave', () => {
-            prevOverlay.style.opacity = '0';
-            nextOverlay.style.opacity = '0';
-        });
-
-        // Format duration
-        function formatDuration(seconds) {
-            const h = Math.floor(seconds / 3600);
-            const m = Math.floor((seconds % 3600) / 60);
-            const s = Math.floor(seconds % 60);
-
-            if (h > 0) {
-                return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-            }
-            return `${m}:${s.toString().padStart(2, '0')}`;
-        }
-
-        // Change playback speed
         function changePlaybackSpeed() {
             currentSpeedIndex = (currentSpeedIndex + 1) % speeds.length;
             const speed = speeds[currentSpeedIndex];
             video.playbackRate = speed;
             speedBtn.textContent = speed + 'x';
+            showToast(`${speed}x 速度`);
         }
 
-        // Show error
-        function showError(message) {
-            errorMessage.textContent = message;
-            errorModal.classList.remove('hidden');
+        function toggleSidebar() {
+            const open = !playlistSidebar.classList.contains('translate-x-full');
+            if (open) {
+                playlistSidebar.classList.add('translate-x-full');
+                sidebarOverlay.classList.add('hidden');
+            } else {
+                playlistSidebar.classList.remove('translate-x-full');
+                sidebarOverlay.classList.remove('hidden');
+            }
         }
 
-        // Logout
-        function logout() {
-            document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-            window.location.href = '/login';
-        }
+        video.addEventListener('ended', () => {
+            if ((playlistId || autoPlaylist === '1') && autoplay && currentIndex < videos.length - 1) playNext();
+        });
+        video.addEventListener('error', () => showError('视频加载失败'));
 
-        // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT') return;
-
-            switch(e.key) {
-                case ' ':
-                    e.preventDefault();
-                    video.paused ? video.play() : video.pause();
-                    break;
-                case 'ArrowLeft':
-                    if (e.shiftKey && playlistId) {
-                        playPrevious();
-                    } else {
-                        video.currentTime -= 10;
-                    }
-                    break;
-                case 'ArrowRight':
-                    if (e.shiftKey && playlistId) {
-                        playNext();
-                    } else {
-                        video.currentTime += 10;
-                    }
-                    break;
-                case 'ArrowUp':
-                    e.preventDefault();
-                    video.volume = Math.min(1, video.volume + 0.1);
-                    break;
-                case 'ArrowDown':
-                    e.preventDefault();
-                    video.volume = Math.max(0, video.volume - 0.1);
-                    break;
-                case 'f':
-                    if (document.fullscreenElement) {
-                        document.exitFullscreen();
-                    } else {
-                        video.requestFullscreen();
-                    }
-                    break;
-                case 'n':
-                case 'N':
-                    if (playlistId) playNext();
-                    break;
-                case 'p':
-                case 'P':
-                    if (playlistId) playPrevious();
-                    break;
-            }
+            if (e.key === 'n' || e.key === 'N') playNext();
+            if (e.key === 'p' || e.key === 'P') playPrevious();
         });
 
-        // Error handling
-        video.addEventListener('error', () => {
-            showError('视频文件不存在或格式不支持');
-        });
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorModal.classList.remove('hidden');
+        }
     </script>
 </body>
 </html>

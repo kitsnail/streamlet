@@ -1,21 +1,66 @@
 {
-  "中国地理-38-final.mp4": {
-    "path": "中国地理-38-final.mp4",
-    "name": "中国地理-38-final.mp4",
+  "2026-w01-final.mp4": {
+    "path": "2026-w01-final.mp4",
+    "name": "2026-w01-final.mp4",
     "views": 1,
     "likes": 0,
     "liked": false,
-    "lastViewed": "2026-02-21T20:06:35.874648+08:00",
-    "hotness": 70.99999999996135
+    "lastViewed": "2026-02-22T15:04:40.297971+08:00",
+    "hotness": 70.9999999999566
+  },
+  "世界地理-13-final.mp4": {
+    "path": "世界地理-13-final.mp4",
+    "name": "世界地理-13-final.mp4",
+    "views": 1,
+    "likes": 0,
+    "liked": false,
+    "lastViewed": "2026-02-22T16:52:17.878341+08:00",
+    "hotness": 70.99999999996146
+  },
+  "世界地理-14-final.mp4": {
+    "path": "世界地理-14-final.mp4",
+    "name": "世界地理-14-final.mp4",
+    "views": 1,
+    "likes": 0,
+    "liked": false,
+    "lastViewed": "2026-02-22T15:13:40.492705+08:00",
+    "hotness": 70.99999999996146
+  },
+  "世界地理-25-final.mp4": {
+    "path": "世界地理-25-final.mp4",
+    "name": "世界地理-25-final.mp4",
+    "views": 1,
+    "likes": 0,
+    "liked": false,
+    "lastViewed": "2026-02-22T17:27:06.899021+08:00",
+    "hotness": 70.99999999993727
+  },
+  "中国地理-13-final.mp4": {
+    "path": "中国地理-13-final.mp4",
+    "name": "中国地理-13-final.mp4",
+    "views": 1,
+    "likes": 0,
+    "liked": false,
+    "lastViewed": "2026-02-22T15:06:46.50323+08:00",
+    "hotness": 70.99999999981192
+  },
+  "中国地理-38-final.mp4": {
+    "path": "中国地理-38-final.mp4",
+    "name": "中国地理-38-final.mp4",
+    "views": 2,
+    "likes": 0,
+    "liked": false,
+    "lastViewed": "2026-02-22T16:51:56.222694+08:00",
+    "hotness": 71.99999999996146
   },
   "中国地理-56-final.mp4": {
     "path": "中国地理-56-final.mp4",
     "name": "中国地理-56-final.mp4",
-    "views": 1,
+    "views": 2,
     "likes": 0,
     "liked": false,
-    "lastViewed": "2026-02-21T20:17:40.015085+08:00",
-    "hotness": 70.99999999996135
+    "lastViewed": "2026-02-22T15:08:30.461074+08:00",
+    "hotness": 71.99999999995185
   },
   "自然的哲学系列-5-final.mp4": {
     "path": "自然的哲学系列-5-final.mp4",
@@ -25,5 +70,23 @@
     "liked": false,
     "lastViewed": "2026-02-21T18:15:53.476469+08:00",
     "hotness": 70.99999999996146
+  },
+  "道法自然-8-final.mp4": {
+    "path": "道法自然-8-final.mp4",
+    "name": "道法自然-8-final.mp4",
+    "views": 1,
+    "likes": 0,
+    "liked": false,
+    "lastViewed": "2026-02-22T15:13:22.242608+08:00",
+    "hotness": 70.99999999996146
+  },
+  "道法自然-9-final.mp4": {
+    "path": "道法自然-9-final.mp4",
+    "name": "道法自然-9-final.mp4",
+    "views": 1,
+    "likes": 0,
+    "liked": false,
+    "lastViewed": "2026-02-22T16:53:12.412179+08:00",
+    "hotness": 70.9999999999566
   }
 }

@@ -2,370 +2,237 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0F172A">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <title>播放列表 - Streamlet</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-        .playlist-card:hover { transform: translateY(-2px); }
+        body { 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; 
+            -webkit-tap-highlight-color: transparent;
+        }
+        .playlist-card:active { transform: scale(0.98); }
         .toast-enter { animation: slideIn 0.3s ease-out; }
         .toast-exit { animation: slideOut 0.3s ease-in forwards; }
         @keyframes slideIn {
-            from { transform: translateX(100%); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
+            from { transform: translateY(-100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
         @keyframes slideOut {
-            from { transform: translateX(0); opacity: 1; }
-            to { transform: translateX(100%); opacity: 0; }
+            from { transform: translateY(0); opacity: 1; }
+            to { transform: translateY(-100%); opacity: 0; }
         }
+        .safe-top { padding-top: env(safe-area-inset-top); }
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
     </style>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    colors: {
-                        primary: '#0F172A',
-                        accent: '#3B82F6',
-                    }
+                    colors: { primary: '#0F172A', accent: '#3B82F6' }
                 }
             }
         }
     </script>
 </head>
-<body class="bg-slate-900 min-h-screen">
+<body class="bg-slate-900 min-h-screen safe-top safe-bottom">
     <!-- Toast Container -->
-    <div id="toastContainer" class="fixed top-20 right-4 z-[60] flex flex-col gap-2 max-w-sm"></div>
+    <div id="toastContainer" class="fixed top-4 left-4 right-4 z-[60] flex flex-col gap-2 max-w-sm mx-auto"></div>
 
-    <!-- Navbar -->
-    <nav class="fixed top-0 left-0 right-0 bg-slate-800/80 backdrop-blur-lg border-b border-slate-700/50 z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
-                <div class="flex items-center gap-3">
-                    <a href="/player" class="flex items-center gap-3 hover:opacity-80 transition-opacity">
-                        <div class="w-8 h-8 bg-accent rounded-lg flex items-center justify-center">
-                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                            </svg>
-                        </div>
-                        <span class="text-white font-semibold text-lg">Streamlet</span>
-                    </a>
-                </div>
-
-                <div class="flex items-center gap-4">
-                    <a href="/player" class="px-4 py-2 text-slate-300 hover:text-white transition-colors duration-200 cursor-pointer">
-                        视频库
-                    </a>
-                    <span class="text-accent font-medium">播放列表</span>
-
-                    <button
-                        onclick="logout()"
-                        class="px-4 py-2 text-slate-400 hover:text-white transition-colors duration-200 cursor-pointer"
-                        aria-label="退出登录"
-                    >
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+    <!-- Header -->
+    <header class="fixed top-0 left-0 right-0 bg-slate-800/95 backdrop-blur-lg border-b border-slate-700/50 z-50 safe-top">
+        <div class="px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="/player" class="flex items-center gap-2">
+                    <div class="w-8 h-8 bg-accent rounded-lg flex items-center justify-center">
+                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                         </svg>
-                    </button>
-                </div>
+                    </div>
+                    <span class="text-white font-semibold">Streamlet</span>
+                </a>
+            </div>
+            <div class="flex items-center gap-2">
+                <span class="text-accent font-medium text-sm">播放列表</span>
+                <button onclick="logout()" class="p-2 text-slate-400 active:bg-slate-700 rounded-lg" aria-label="退出">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                    </svg>
+                </button>
             </div>
         </div>
-    </nav>
+    </header>
 
     <!-- Main Content -->
-    <main class="pt-24 pb-12 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
-        <!-- Header -->
-        <div class="flex items-center justify-between mb-8">
-            <div>
-                <h1 class="text-2xl font-bold text-white">我的播放列表</h1>
-                <p class="text-slate-400 mt-1">创建和管理你的视频播放列表</p>
-            </div>
-            <button
-                onclick="showCreateModal()"
-                class="px-4 py-2 bg-accent hover:bg-blue-600 text-white font-medium rounded-xl transition-colors duration-200 cursor-pointer flex items-center gap-2"
-            >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <main class="pt-20 pb-24 px-4">
+        <div class="flex items-center justify-between mb-4">
+            <h1 class="text-lg font-bold text-white">我的播放列表</h1>
+            <button onclick="showCreateModal()" class="px-3 py-2 bg-accent active:bg-blue-700 text-white text-sm font-medium rounded-xl flex items-center gap-1">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
                 </svg>
-                创建播放列表
+                新建
             </button>
         </div>
 
-        <!-- Playlists Grid -->
-        <div id="playlistsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            <!-- Loading skeleton -->
-            <div class="animate-pulse bg-slate-800 rounded-xl h-40"></div>
-            <div class="animate-pulse bg-slate-800 rounded-xl h-40"></div>
-            <div class="animate-pulse bg-slate-800 rounded-xl h-40"></div>
-            <div class="animate-pulse bg-slate-800 rounded-xl h-40"></div>
+        <div id="playlistsGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div class="animate-pulse bg-slate-800 rounded-xl h-28"></div>
+            <div class="animate-pulse bg-slate-800 rounded-xl h-28"></div>
         </div>
 
-        <!-- Empty State -->
-        <div id="emptyState" class="hidden text-center py-20">
+        <div id="emptyState" class="hidden text-center py-16">
             <svg class="mx-auto w-16 h-16 text-slate-600 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
             </svg>
-            <p class="text-slate-400 text-lg">暂无播放列表</p>
-            <p class="text-slate-500 text-sm mt-2">点击上方按钮创建你的第一个播放列表</p>
+            <p class="text-slate-400">暂无播放列表</p>
+            <p class="text-slate-500 text-sm mt-1">点击上方按钮创建</p>
         </div>
     </main>
 
-    <!-- Create Playlist Modal -->
-    <div id="createModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md">
-            <h2 class="text-xl font-semibold text-white mb-4">创建播放列表</h2>
-            <form id="createForm" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-medium text-slate-300 mb-2">名称</label>
-                    <input
-                        type="text"
-                        id="playlistName"
-                        required
-                        class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-colors duration-200"
-                        placeholder="输入播放列表名称"
-                    >
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-slate-300 mb-2">描述（可选）</label>
-                    <textarea
-                        id="playlistDesc"
-                        rows="3"
-                        class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent resize-none transition-colors duration-200"
-                        placeholder="添加描述..."
-                    ></textarea>
-                </div>
-                <div class="flex gap-3 pt-2">
-                    <button
-                        type="button"
-                        onclick="hideCreateModal()"
-                        class="flex-1 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-xl transition-colors duration-200 cursor-pointer"
-                    >
-                        取消
-                    </button>
-                    <button
-                        type="submit"
-                        class="flex-1 px-4 py-3 bg-accent hover:bg-blue-600 text-white font-medium rounded-xl transition-colors duration-200 cursor-pointer"
-                    >
-                        创建
-                    </button>
+    <!-- Create Modal -->
+    <div id="createModal" class="hidden fixed inset-0 bg-black/70 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+        <div class="bg-slate-800 rounded-t-2xl sm:rounded-2xl p-4 sm:p-6 w-full sm:max-w-md safe-bottom">
+            <h2 class="text-lg font-semibold text-white mb-4">创建播放列表</h2>
+            <form id="createForm">
+                <input type="text" id="playlistName" required placeholder="播放列表名称" class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent mb-3">
+                <textarea id="playlistDesc" rows="2" placeholder="描述（可选）" class="w-full px-4 py-3 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-accent resize-none mb-4"></textarea>
+                <div class="flex gap-3">
+                    <button type="button" onclick="hideCreateModal()" class="flex-1 py-3 bg-slate-700 active:bg-slate-600 text-white font-medium rounded-xl">取消</button>
+                    <button type="submit" class="flex-1 py-3 bg-accent active:bg-blue-700 text-white font-medium rounded-xl">创建</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Delete Confirmation Modal -->
-    <div id="deleteModal" class="hidden fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-sm">
-            <div class="text-center">
-                <div class="mx-auto w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
-                    <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                    </svg>
-                </div>
-                <h3 class="text-lg font-semibold text-white mb-2">删除播放列表</h3>
-                <p class="text-slate-400 mb-6">确定要删除这个播放列表吗？此操作无法撤销。</p>
-                <div class="flex gap-3">
-                    <button
-                        onclick="hideDeleteModal()"
-                        class="flex-1 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-xl transition-colors duration-200 cursor-pointer"
-                    >
-                        取消
-                    </button>
-                    <button
-                        onclick="confirmDelete()"
-                        class="flex-1 px-4 py-3 bg-red-500 hover:bg-red-600 text-white font-medium rounded-xl transition-colors duration-200 cursor-pointer"
-                    >
-                        删除
-                    </button>
-                </div>
+    <!-- Delete Modal -->
+    <div id="deleteModal" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+        <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-sm text-center">
+            <div class="mx-auto w-12 h-12 bg-red-500/20 rounded-full flex items-center justify-center mb-4">
+                <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                </svg>
+            </div>
+            <h3 class="text-lg font-semibold text-white mb-2">删除播放列表</h3>
+            <p class="text-slate-400 text-sm mb-6">确定要删除吗？此操作无法撤销。</p>
+            <div class="flex gap-3">
+                <button onclick="hideDeleteModal()" class="flex-1 py-3 bg-slate-700 active:bg-slate-600 text-white font-medium rounded-xl">取消</button>
+                <button onclick="confirmDelete()" class="flex-1 py-3 bg-red-500 active:bg-red-600 text-white font-medium rounded-xl">删除</button>
             </div>
         </div>
     </div>
 
-    <script>
-        let playlists = [];
-        let deleteTargetId = null;
+    <!-- Bottom Nav -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-slate-800/95 backdrop-blur-lg border-t border-slate-700/50 safe-bottom z-40">
+        <div class="flex items-center justify-around py-2">
+            <a href="/player" class="flex flex-col items-center py-2 px-4 text-slate-400">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
+                </svg>
+                <span class="text-xs mt-1">视频</span>
+            </a>
+            <a href="/playlists" class="flex flex-col items-center py-2 px-4 text-accent">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                </svg>
+                <span class="text-xs mt-1">列表</span>
+            </a>
+        </div>
+    </nav>
 
-        // Toast notification system
+    <script>
+        let playlists = [], deleteTargetId = null;
+
         function showToast(message, type = 'success') {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
             const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
             const icon = type === 'success' 
                 ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>'
-                : type === 'error'
-                ? '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>'
-                : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
-            
+                : '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>';
             toast.className = `toast-enter ${bgColor} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3`;
             toast.innerHTML = `${icon}<span class="font-medium">${message}</span>`;
             container.appendChild(toast);
-
-            setTimeout(() => {
-                toast.classList.remove('toast-enter');
-                toast.classList.add('toast-exit');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
+            setTimeout(() => { toast.classList.add('toast-exit'); setTimeout(() => toast.remove(), 300); }, 3000);
         }
 
-        // Format date
         function formatDate(dateStr) {
-            const date = new Date(dateStr);
-            return date.toLocaleDateString('zh-CN', {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric'
-            });
+            return new Date(dateStr).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' });
         }
 
-        // Render playlist card
-        function renderPlaylist(playlist) {
-            const videoCount = playlist.videos ? playlist.videos.length : 0;
+        function renderPlaylist(p) {
+            const count = p.videos?.length || 0;
             return `
-                <div class="playlist-card bg-slate-800 rounded-xl overflow-hidden border border-slate-700/50 hover:border-accent/50 transition-all duration-200 cursor-pointer"
-                     onclick="openPlaylist('${playlist.id}')">
-                    <div class="aspect-video bg-slate-700 flex items-center justify-center relative">
-                        ${videoCount > 0 
-                            ? `<svg class="w-16 h-16 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                               </svg>`
-                            : `<svg class="w-12 h-12 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4v16m8-8H4"/>
-                               </svg>`
-                        }
-                        <div class="absolute top-2 right-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-lg text-white text-xs">
-                            ${videoCount} 个视频
+                <div class="playlist-card bg-slate-800 rounded-xl border border-slate-700/50 active:border-accent/50 transition-all" onclick="openPlaylist('${p.id}')">
+                    <div class="p-4 flex items-center gap-3">
+                        <div class="w-12 h-12 bg-slate-700 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <svg class="w-6 h-6 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2"/>
+                            </svg>
                         </div>
-                    </div>
-                    <div class="p-4">
-                        <h3 class="text-white font-medium truncate" title="${playlist.name}">${playlist.name}</h3>
-                        ${playlist.description ? `<p class="text-slate-400 text-sm mt-1 line-clamp-2">${playlist.description}</p>` : ''}
-                        <div class="flex items-center justify-between mt-3 text-sm text-slate-500">
-                            <span>${formatDate(playlist.createdAt)}</span>
-                            <button 
-                                onclick="event.stopPropagation(); showDeleteModal('${playlist.id}')"
-                                class="text-slate-500 hover:text-red-400 transition-colors duration-200 cursor-pointer"
-                                aria-label="删除播放列表"
-                            >
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                                </svg>
-                            </button>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="text-white font-medium truncate">${p.name}</h3>
+                            <p class="text-slate-400 text-sm">${count} 个视频 · ${formatDate(p.createdAt)}</p>
                         </div>
+                        <button onclick="event.stopPropagation(); showDeleteModal('${p.id}')" class="p-2 text-slate-500 active:text-red-400 active:bg-slate-700 rounded-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                            </svg>
+                        </button>
                     </div>
                 </div>
             `;
         }
 
-        // Render playlists
         function renderPlaylists() {
             const grid = document.getElementById('playlistsGrid');
             const empty = document.getElementById('emptyState');
-
-            if (playlists.length === 0) {
-                grid.classList.add('hidden');
-                empty.classList.remove('hidden');
-                return;
-            }
-
-            grid.classList.remove('hidden');
-            empty.classList.add('hidden');
+            if (!playlists.length) { grid.classList.add('hidden'); empty.classList.remove('hidden'); return; }
+            grid.classList.remove('hidden'); empty.classList.add('hidden');
             grid.innerHTML = playlists.map(renderPlaylist).join('');
         }
 
-        // Fetch playlists
         async function fetchPlaylists() {
             try {
-                const response = await fetch('/api/playlists');
-                if (response.status === 401) {
-                    window.location.href = '/login';
-                    return;
-                }
-                const data = await response.json();
+                const res = await fetch('/api/playlists');
+                if (res.status === 401) { window.location.href = '/login'; return; }
+                const data = await res.json();
                 playlists = data.playlists || [];
                 renderPlaylists();
-            } catch (err) {
-                console.error('Failed to fetch playlists:', err);
-            }
+            } catch (e) {}
         }
 
-        // Show create modal
-        function showCreateModal() {
-            document.getElementById('createModal').classList.remove('hidden');
-        }
+        function showCreateModal() { document.getElementById('createModal').classList.remove('hidden'); }
+        function hideCreateModal() { document.getElementById('createModal').classList.add('hidden'); document.getElementById('createForm').reset(); }
 
-        // Hide create modal
-        function hideCreateModal() {
-            document.getElementById('createModal').classList.add('hidden');
-            document.getElementById('createForm').reset();
-        }
-
-        // Create playlist
         document.getElementById('createForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const name = document.getElementById('playlistName').value;
             const desc = document.getElementById('playlistDesc').value;
-
             try {
-                const response = await fetch('/api/playlists', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ name, description: desc })
-                });
-                if (response.ok) {
-                    hideCreateModal();
-                    showToast('播放列表已创建');
-                    fetchPlaylists();
-                }
-            } catch (err) {
-                showToast('创建失败', 'error');
-            }
+                const res = await fetch('/api/playlists', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description: desc }) });
+                if (res.ok) { hideCreateModal(); showToast('已创建'); fetchPlaylists(); }
+            } catch (e) { showToast('创建失败', 'error'); }
         });
 
-        // Show delete modal
-        function showDeleteModal(id) {
-            deleteTargetId = id;
-            document.getElementById('deleteModal').classList.remove('hidden');
-        }
+        function showDeleteModal(id) { deleteTargetId = id; document.getElementById('deleteModal').classList.remove('hidden'); }
+        function hideDeleteModal() { document.getElementById('deleteModal').classList.add('hidden'); deleteTargetId = null; }
 
-        // Hide delete modal
-        function hideDeleteModal() {
-            document.getElementById('deleteModal').classList.add('hidden');
-            deleteTargetId = null;
-        }
-
-        // Confirm delete
         async function confirmDelete() {
             if (!deleteTargetId) return;
-            
             try {
-                const response = await fetch(`/api/playlists/${deleteTargetId}`, {
-                    method: 'DELETE'
-                });
-                if (response.ok) {
-                    hideDeleteModal();
-                    showToast('播放列表已删除');
-                    fetchPlaylists();
-                }
-            } catch (err) {
-                showToast('删除失败', 'error');
-            }
+                const res = await fetch(`/api/playlists/${deleteTargetId}`, { method: 'DELETE' });
+                if (res.ok) { hideDeleteModal(); showToast('已删除'); fetchPlaylists(); }
+            } catch (e) { showToast('删除失败', 'error'); }
         }
 
-        // Open playlist
-        function openPlaylist(id) {
-            window.location.href = `/playlist.html?id=${id}`;
-        }
+        function openPlaylist(id) { window.location.href = `/playlist.html?id=${id}`; }
+        function logout() { document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;'; window.location.href = '/login'; }
 
-        // Logout
-        function logout() {
-            document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-            window.location.href = '/login';
-        }
+        document.getElementById('createModal').addEventListener('click', (e) => { if (e.target.id === 'createModal') hideCreateModal(); });
+        document.getElementById('deleteModal').addEventListener('click', (e) => { if (e.target.id === 'deleteModal') hideDeleteModal(); });
 
-        // Initial load
         fetchPlaylists();
     </script>
 </body>
