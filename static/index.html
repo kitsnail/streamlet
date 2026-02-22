@@ -109,6 +109,11 @@
                     <option value="name">名称</option>
                     <option value="size">大小</option>
                 </select>
+                <button onclick="toggleOrder()" id="orderBtn" class="px-3 py-2.5 bg-slate-700 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-accent flex items-center justify-center min-w-[44px]" title="切换排序方向">
+                    <svg id="orderIcon" class="w-5 h-5 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
             </div>
         </div>
     </header>
@@ -183,7 +188,7 @@
 
     <script>
         let currentPage = 1, totalPages = 1, pageSize = 50;
-        let currentSearch = '', currentSort = 'modified';
+        let currentSearch = '', currentSort = 'modified', currentOrder = 'desc';
         let searchTimeout = null;
         let currentVideoPath = null;
         let playlists = [];
@@ -361,9 +366,18 @@
             params.set('page', currentPage.toString());
             params.set('pageSize', pageSize.toString());
             params.set('sort', currentSort);
+            params.set('order', currentOrder);
             if (currentSearch) params.set('search', currentSearch);
             params.set('autoPlaylist', '1');
             return `/player?${params.toString()}`;
+        }
+
+        function toggleOrder() {
+            currentOrder = currentOrder === 'desc' ? 'asc' : 'desc';
+            const icon = document.getElementById('orderIcon');
+            icon.style.transform = currentOrder === 'asc' ? 'rotate(180deg)' : 'rotate(0deg)';
+            currentPage = 1;
+            fetchVideos();
         }
 
         function updateUI() {
@@ -388,7 +402,7 @@
 
         async function fetchVideos(append = false) {
             try {
-                const params = new URLSearchParams({ page: currentPage, pageSize: pageSize, sort: currentSort });
+                const params = new URLSearchParams({ page: currentPage, pageSize: pageSize, sort: currentSort, order: currentOrder });
                 if (currentSearch) params.append('search', currentSearch);
                 const response = await fetch(`/api/videos?${params}`);
                 if (response.status === 401) { window.location.href = '/login'; return; }

@@ -36,7 +36,8 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 		pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
 		search := c.Query("search")
-		sortBy := c.DefaultQuery("sort", "modified") // modified, views, likes, hotness, name
+		sortBy := c.DefaultQuery("sort", "modified") // modified, views, likes, hotness, name, size
+		order := c.DefaultQuery("order", "desc")     // asc, desc
 
 		if page < 1 {
 			page = 1
@@ -103,29 +104,48 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 		}
 
 		// Sort based on sortBy parameter
+		isAsc := order == "asc"
 		switch sortBy {
 		case "views":
 			sort.Slice(videos, func(i, j int) bool {
+				if isAsc {
+					return videos[i].Views < videos[j].Views
+				}
 				return videos[i].Views > videos[j].Views
 			})
 		case "likes":
 			sort.Slice(videos, func(i, j int) bool {
+				if isAsc {
+					return videos[i].Likes < videos[j].Likes
+				}
 				return videos[i].Likes > videos[j].Likes
 			})
 		case "hotness":
 			sort.Slice(videos, func(i, j int) bool {
+				if isAsc {
+					return videos[i].Hotness < videos[j].Hotness
+				}
 				return videos[i].Hotness > videos[j].Hotness
 			})
 		case "name":
 			sort.Slice(videos, func(i, j int) bool {
+				if isAsc {
+					return videos[i].Name > videos[j].Name
+				}
 				return videos[i].Name < videos[j].Name
 			})
 		case "size":
 			sort.Slice(videos, func(i, j int) bool {
+				if isAsc {
+					return videos[i].Size < videos[j].Size
+				}
 				return videos[i].Size > videos[j].Size
 			})
 		default: // "modified"
 			sort.Slice(videos, func(i, j int) bool {
+				if isAsc {
+					return videos[i].Modified < videos[j].Modified
+				}
 				return videos[i].Modified > videos[j].Modified
 			})
 		}
@@ -149,6 +169,7 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 			"pageSize":   pageSize,
 			"totalPages": totalPages,
 			"sort":       sortBy,
+			"order":      order,
 			"videos":     videos[start:end],
 		})
 	}
