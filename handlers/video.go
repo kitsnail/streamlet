@@ -65,8 +65,8 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 					return nil
 				}
 
-				// Skip very small files (< 10KB, likely corrupted or placeholder)
-				if info.Size() < 10*1024 {
+				// Skip very small files (< 10MB, likely corrupted or placeholder)
+				if info.Size() < 10*1024*1024 {
 					return nil
 				}
 
