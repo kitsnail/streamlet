@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"fmt"
+	"io"
 	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -317,8 +319,9 @@ func StreamVideo(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Parse Range header
-		rangeParts := strings.Split(strings.TrimPrefix(rangeHeader, "bytes="), "-")
+		// Parse Range header (e.g., "bytes=0-1023" or "bytes=0-")
+		rangeStr := strings.TrimPrefix(rangeHeader, "bytes=")
+		rangeParts := strings.Split(rangeStr, "-")
 		if len(rangeParts) != 2 {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid range"})
 			return
@@ -337,6 +340,8 @@ func StreamVideo(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		contentLength := end - start + 1
+
 		// Seek to start position
 		_, err = file.Seek(start, 0)
 		if err != nil {
@@ -344,16 +349,18 @@ func StreamVideo(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		contentLength := end - start + 1
-
 		// Set headers for partial content
 		c.Header("Content-Type", "video/mp4")
 		c.Header("Content-Length", strconv.FormatInt(contentLength, 10))
 		c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
 		c.Header("Accept-Ranges", "bytes")
+		c.Status(http.StatusPartialContent)
 
-		// Stream partial content
-		c.DataFromReader(http.StatusPartialContent, contentLength, "video/mp4", file, nil)
+		// Use io.CopyN to ensure exact byte count
+		_, err = io.CopyN(c.Writer, file, contentLength)
+		if err != nil && err != io.EOF {
+			log.Printf("Stream error: %v", err)
+		}
 	}
 }
 
