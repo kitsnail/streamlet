@@ -53,9 +53,20 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 				return err
 			}
 
+			// Skip macOS hidden files (._*.mp4) and small files
 			if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".mp4") {
+				// Skip macOS AppleDouble files (._filename)
+				if strings.HasPrefix(d.Name(), "._") {
+					return nil
+				}
+
 				info, err := d.Info()
 				if err != nil {
+					return nil
+				}
+
+				// Skip very small files (< 10KB, likely corrupted or placeholder)
+				if info.Size() < 10*1024 {
 					return nil
 				}
 
