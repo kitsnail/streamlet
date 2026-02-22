@@ -62,13 +62,13 @@ func GetThumbnail(cfg *config.Config) gin.HandlerFunc {
 		}
 
 		// Generate thumbnail using ffmpeg
-		// ffmpeg -i video.mp4 -ss 00:00:01 -vframes 1 -q:v 2 thumbnail.jpg
+		// ffmpeg -i video.mp4 -ss 00:01:00 -vframes 1 -q:v 2 thumbnail.jpg
 		cmd := exec.Command("ffmpeg",
 			"-i", absVideoPath,
-			"-ss", "00:00:01",  // Take screenshot at 1 second
-			"-vframes", "1",     // Extract one frame
-			"-q:v", "2",         // High quality
-			"-y",                // Overwrite output file
+			"-ss", "00:01:00", // Take screenshot at 60 seconds
+			"-vframes", "1",    // Extract one frame
+			"-q:v", "2",        // High quality
+			"-y",               // Overwrite output file
 			thumbnailPath,
 		)
 
