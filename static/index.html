@@ -230,14 +230,20 @@
 
         function renderVideo(video, index) {
             const thumbnailUrl = `/api/thumbnail?video=${encodeURIComponent(video.path)}`;
+            const previewUrl = `/api/preview?video=${encodeURIComponent(video.path)}`;
             const playerUrl = buildPlayerUrl(video.path, index);
             
             return `
-                <div class="video-card bg-slate-800 rounded-xl overflow-hidden border border-slate-700/50 active:border-accent/50 transition-all">
+                <div class="video-card bg-slate-800 rounded-xl overflow-hidden border border-slate-700/50 active:border-accent/50 transition-all" 
+                     onmouseenter="startPreview(this, '${previewUrl}')" 
+                     onmouseleave="stopPreview(this)"
+                     ontouchstart="startPreview(this, '${previewUrl}')"
+                     ontouchend="stopPreview(this)">
                     <a href="${playerUrl}" onclick="recordView('${video.path}', '${video.name.replace(/'/g, "\\'")}')">
                         <div class="aspect-video thumbnail-placeholder relative overflow-hidden">
-                            <img src="${thumbnailUrl}" alt="${video.name}" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none';">
-                            <div class="absolute bottom-1 right-1 bg-black/70 px-1.5 py-0.5 rounded text-white text-xs flex items-center gap-0.5">
+                            <img src="${thumbnailUrl}" alt="${video.name}" class="w-full h-full object-cover preview-thumb" loading="lazy" onerror="this.style.display='none';">
+                            <video class="w-full h-full object-cover hidden preview-video" muted loop playsinline preload="none"></video>
+                            <div class="absolute bottom-1 right-1 bg-black/70 px-1.5 py-0.5 rounded text-white text-xs flex items-center gap-0.5 pointer-events-none">
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
                                 </svg>
@@ -269,6 +275,35 @@
                     </div>
                 </div>
             `;
+        }
+
+        let previewTimeout = null;
+
+        function startPreview(card, previewUrl) {
+            clearTimeout(previewTimeout);
+            previewTimeout = setTimeout(() => {
+                const video = card.querySelector('.preview-video');
+                const thumb = card.querySelector('.preview-thumb');
+                if (video && thumb) {
+                    video.src = previewUrl;
+                    video.classList.remove('hidden');
+                    thumb.classList.add('hidden');
+                    video.play().catch(() => {});
+                }
+            }, 500); // Wait 500ms before showing preview
+        }
+
+        function stopPreview(card) {
+            clearTimeout(previewTimeout);
+            const video = card.querySelector('.preview-video');
+            const thumb = card.querySelector('.preview-thumb');
+            if (video && thumb) {
+                video.pause();
+                video.currentTime = 0;
+                video.src = '';
+                video.classList.add('hidden');
+                thumb.classList.remove('hidden');
+            }
         }
 
         async function recordView(path, name) {

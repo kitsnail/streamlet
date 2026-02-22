@@ -43,6 +43,7 @@ func main() {
 	r.GET("/api/videos", handlers.AuthMiddleware(cfg), handlers.VideoListHandler(cfg, videoStore))
 	r.GET("/api/video/*filename", handlers.AuthMiddleware(cfg), handlers.StreamVideo(cfg))
 	r.GET("/api/thumbnail", handlers.AuthMiddleware(cfg), handlers.GetThumbnail(cfg))
+	r.GET("/api/preview", handlers.AuthMiddleware(cfg), handlers.GetPreview(cfg))
 	r.POST("/api/view", handlers.AuthMiddleware(cfg), handlers.VideoViewHandler(cfg, videoStore))
 	r.POST("/api/like", handlers.AuthMiddleware(cfg), handlers.VideoLikeHandler(cfg, videoStore))
 	
