@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"fmt"
-	"io"
 	"io/fs"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -306,62 +304,24 @@ func StreamVideo(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		fileSize := stat.Size()
-
-		// Handle Range request for video seeking
-		rangeHeader := c.GetHeader("Range")
-		if rangeHeader == "" {
-			// No range header, send entire file
-			c.Header("Content-Type", "video/mp4")
-			c.Header("Content-Length", strconv.FormatInt(fileSize, 10))
-			c.Header("Accept-Ranges", "bytes")
-			c.DataFromReader(http.StatusOK, fileSize, "video/mp4", file, nil)
-			return
-		}
-
-		// Parse Range header (e.g., "bytes=0-1023" or "bytes=0-")
-		rangeStr := strings.TrimPrefix(rangeHeader, "bytes=")
-		rangeParts := strings.Split(rangeStr, "-")
-		if len(rangeParts) != 2 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid range"})
-			return
-		}
-
-		start, _ := strconv.ParseInt(rangeParts[0], 10, 64)
-		end := fileSize - 1
-		if rangeParts[1] != "" {
-			end, _ = strconv.ParseInt(rangeParts[1], 10, 64)
-		}
-
-		// Validate range
-		if start >= fileSize || end >= fileSize || start > end {
-			c.Status(http.StatusRequestedRangeNotSatisfiable)
-			c.Header("Content-Range", fmt.Sprintf("bytes */%d", fileSize))
-			return
-		}
-
-		contentLength := end - start + 1
-
-		// Seek to start position
-		_, err = file.Seek(start, 0)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Seek failed"})
-			return
-		}
-
-		// Set headers for partial content
+		// Use http.ServeContent to handle Range requests properly
+		// This is the standard way to serve static files with Range support
 		c.Header("Content-Type", "video/mp4")
-		c.Header("Content-Length", strconv.FormatInt(contentLength, 10))
-		c.Header("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, fileSize))
 		c.Header("Accept-Ranges", "bytes")
-		c.Status(http.StatusPartialContent)
-
-		// Use io.CopyN to ensure exact byte count
-		_, err = io.CopyN(c.Writer, file, contentLength)
-		if err != nil && err != io.EOF {
-			log.Printf("Stream error: %v", err)
-		}
+		c.Header("Cache-Control", "public, max-age=31536000") // Cache for 1 year
+		http.ServeContent(c.Writer, c.Request, "video.mp4", stat.ModTime(), file)
 	}
+}
+
+// isBrokenPipe checks if error is a broken pipe or connection reset
+func isBrokenPipe(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return strings.Contains(errStr, "broken pipe") ||
+		strings.Contains(errStr, "connection reset") ||
+		strings.Contains(errStr, "connection closed")
 }
 
 // PlayerPage renders video player page
