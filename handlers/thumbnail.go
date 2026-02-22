@@ -3,11 +3,13 @@ package handlers
 import (
 	"crypto/md5"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -148,13 +150,34 @@ func (tg *ThumbnailGenerator) generateThumbnail(videoPath string) error {
 
 	absVideoPath := filepath.Join(tg.cfg.VideoDir, videoPath)
 
+	// Get video duration using ffprobe
+	durationCmd := exec.Command("ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		absVideoPath,
+	)
+	durationOutput, err := durationCmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to get duration: %w", err)
+	}
+
+	durationStr := strings.TrimSpace(string(durationOutput))
+	duration, _ := strconv.ParseFloat(durationStr, 64)
+	if duration < 1 {
+		duration = 600 // Default to 10 minutes
+	}
+
+	// Take screenshot at middle of video
+	middlePoint := duration / 2
+
 	// Generate thumbnail using ffmpeg
 	cmd := exec.Command("ffmpeg",
 		"-i", absVideoPath,
-		"-ss", "00:10:00", // Take screenshot at 600 seconds (10 minutes)
-		"-vframes", "1",    // Extract one frame
-		"-q:v", "2",        // High quality
-		"-y",               // Overwrite output file
+		"-ss", fmt.Sprintf("%.2f", middlePoint), // Take screenshot at middle
+		"-vframes", "1",                         // Extract one frame
+		"-q:v", "2",                             // High quality
+		"-y",                                    // Overwrite output file
 		thumbnailPath,
 	)
 

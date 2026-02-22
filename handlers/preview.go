@@ -17,7 +17,7 @@ import (
 	"github.com/kitsnail/streamlet/config"
 )
 
-// ProgressCallback is called during preview generation
+// ProgressCallback is called during generation
 type ProgressCallback func(total, done, failed int)
 
 // PreviewGenerator handles batch preview generation
@@ -42,23 +42,19 @@ func (pg *PreviewGenerator) SetProgressCallback(cb ProgressCallback) {
 
 // GenerateAll generates previews for all videos concurrently
 func (pg *PreviewGenerator) GenerateAll() error {
-	// Ensure thumbnail directory exists
 	if err := os.MkdirAll(pg.cfg.ThumbnailDir, 0755); err != nil {
 		return err
 	}
 
-	// Find all video files
 	var videos []string
 	err := filepath.WalkDir(pg.cfg.VideoDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".mp4") {
-			// Skip macOS AppleDouble files
 			if strings.HasPrefix(d.Name(), "._") {
 				return nil
 			}
-			// Skip small files
 			info, err := d.Info()
 			if err != nil {
 				return nil
@@ -77,7 +73,6 @@ func (pg *PreviewGenerator) GenerateAll() error {
 
 	log.Printf("🎬 Found %d videos, generating previews with %d workers...", len(videos), pg.workers)
 
-	// Worker pool
 	jobs := make(chan string, len(videos))
 	results := make(chan struct {
 		path string
@@ -86,7 +81,6 @@ func (pg *PreviewGenerator) GenerateAll() error {
 
 	var wg sync.WaitGroup
 
-	// Start workers
 	for i := 0; i < pg.workers; i++ {
 		wg.Add(1)
 		go func(workerID int) {
@@ -101,7 +95,6 @@ func (pg *PreviewGenerator) GenerateAll() error {
 		}(i)
 	}
 
-	// Send jobs
 	go func() {
 		for _, video := range videos {
 			jobs <- video
@@ -109,13 +102,11 @@ func (pg *PreviewGenerator) GenerateAll() error {
 		close(jobs)
 	}()
 
-	// Wait for completion
 	go func() {
 		wg.Wait()
 		close(results)
 	}()
 
-	// Collect results
 	success := 0
 	failed := 0
 	total := len(videos)
@@ -130,7 +121,6 @@ func (pg *PreviewGenerator) GenerateAll() error {
 				log.Printf("✅ Progress: %d/%d previews generated", success, total)
 			}
 		}
-		// Call progress callback
 		if pg.callback != nil {
 			pg.callback(total, success, failed)
 		}
@@ -140,15 +130,14 @@ func (pg *PreviewGenerator) GenerateAll() error {
 	return nil
 }
 
-// generatePreview generates a preview for a single video
+// generatePreview generates a preview for a single video (10 segments, 1 second each)
 func (pg *PreviewGenerator) generatePreview(videoPath string) error {
-	// Check if preview already exists
 	hash := md5.Sum([]byte(videoPath + "_preview"))
 	previewFilename := hex.EncodeToString(hash[:]) + ".mp4"
 	previewPath := filepath.Join(pg.cfg.ThumbnailDir, previewFilename)
 
 	if _, err := os.Stat(previewPath); err == nil {
-		return nil // Already exists
+		return nil
 	}
 
 	absVideoPath := filepath.Join(pg.cfg.VideoDir, videoPath)
@@ -171,44 +160,54 @@ func (pg *PreviewGenerator) generatePreview(videoPath string) error {
 		duration = 600
 	}
 
-	// Build ffmpeg command for 10-segment preview
-	var inputs []string
-	var filterParts []string
+	// Generate 10 segments, 1 second each, evenly distributed
+	// Timestamps: 5%, 15%, 25%, ..., 95% of duration
+	tempDir := filepath.Join(pg.cfg.ThumbnailDir, "temp_"+hex.EncodeToString(hash[:])[:8])
+	os.MkdirAll(tempDir, 0755)
+	defer os.RemoveAll(tempDir)
 
-	for i := 1; i <= 10; i++ {
-		timestamp := duration * float64(i) / 11.0
-		if timestamp >= duration-1 {
-			timestamp = duration - 2
-		}
-		if timestamp < 0 {
-			timestamp = 0
-		}
-		inputs = append(inputs,
-			"-ss", fmt.Sprintf("%.2f", timestamp),
+	segmentFiles := make([]string, 10)
+	success := true
+
+	for i := 0; i < 10; i++ {
+		ts := duration * float64(5+i*10) / 100.0
+		segmentPath := filepath.Join(tempDir, fmt.Sprintf("seg%d.ts", i))
+		segmentFiles[i] = segmentPath
+
+		cmd := exec.Command("ffmpeg",
+			"-y",
+			"-ss", fmt.Sprintf("%.2f", ts),
 			"-i", absVideoPath,
 			"-t", "1",
+			"-c:v", "libx264",
+			"-crf", "28",
+			"-preset", "fast",
+			"-an",
+			"-f", "mpegts",
+			segmentPath,
 		)
-		filterParts = append(filterParts, fmt.Sprintf("[%d:v]", i-1))
+		if err := cmd.Run(); err != nil {
+			success = false
+			break
+		}
 	}
 
-	filterComplex := strings.Join(filterParts, "") + "concat=n=10:v=1:a=0[out]"
+	if success {
+		concatList := "concat:" + strings.Join(segmentFiles, "|")
+		concatCmd := exec.Command("ffmpeg",
+			"-y",
+			"-i", concatList,
+			"-c", "copy",
+			"-movflags", "+faststart",
+			previewPath,
+		)
+		if err := concatCmd.Run(); err != nil {
+			success = false
+		}
+	}
 
-	args := []string{"-y"}
-	args = append(args, inputs...)
-	args = append(args,
-		"-filter_complex", filterComplex,
-		"-map", "[out]",
-		"-c:v", "libx264",
-		"-crf", "28",
-		"-preset", "fast", // Use fast preset for better quality/speed balance
-		"-an",
-		"-movflags", "+faststart",
-		previewPath,
-	)
-
-	cmd := exec.Command("ffmpeg", args...)
-	if err := cmd.Run(); err != nil {
-		// Fallback: simple 10-second preview
+	if !success {
+		// Fallback: simple 10-second preview from middle
 		midPoint := duration / 2
 		if midPoint < 5 {
 			midPoint = 0
@@ -231,7 +230,7 @@ func (pg *PreviewGenerator) generatePreview(videoPath string) error {
 	return nil
 }
 
-// GetPreview returns or generates a preview video (for API handler)
+// GetPreview returns or generates a preview video
 func GetPreview(cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		videoPath := c.Query("video")
@@ -240,7 +239,6 @@ func GetPreview(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Security check
 		fullVideoPath := filepath.Join(cfg.VideoDir, videoPath)
 		absVideoPath, err := filepath.Abs(fullVideoPath)
 		if err != nil {
@@ -259,18 +257,15 @@ func GetPreview(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Generate preview filename
 		hash := md5.Sum([]byte(videoPath + "_preview"))
 		previewFilename := hex.EncodeToString(hash[:]) + ".mp4"
 		previewPath := filepath.Join(cfg.ThumbnailDir, previewFilename)
 
-		// Check if preview exists
 		if _, err := os.Stat(previewPath); err == nil {
 			c.File(previewPath)
 			return
 		}
 
-		// Generate preview on-demand (fallback)
 		pg := NewPreviewGenerator(cfg, 1)
 		if err := pg.generatePreview(videoPath); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate preview"})
@@ -279,14 +274,4 @@ func GetPreview(cfg *config.Config) gin.HandlerFunc {
 
 		c.File(previewPath)
 	}
-}
-
-// GeneratePreviewsAsync starts preview generation in background
-func GeneratePreviewsAsync(cfg *config.Config) {
-	go func() {
-		generator := NewPreviewGenerator(cfg, 4)
-		if err := generator.GenerateAll(); err != nil {
-			log.Printf("❌ Preview generation error: %v", err)
-		}
-	}()
 }
