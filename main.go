@@ -2,12 +2,25 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/kitsnail/streamlet/config"
 	"github.com/kitsnail/streamlet/handlers"
 	"github.com/kitsnail/streamlet/storage"
+)
+
+var (
+	previewRunning  bool
+	previewMutex    sync.Mutex
+	previewProgress struct {
+		Total   int
+		Done    int
+		Failed  int
+		Running bool
+	}
 )
 
 func main() {
@@ -46,6 +59,48 @@ func main() {
 	r.GET("/api/preview", handlers.AuthMiddleware(cfg), handlers.GetPreview(cfg))
 	r.POST("/api/view", handlers.AuthMiddleware(cfg), handlers.VideoViewHandler(cfg, videoStore))
 	r.POST("/api/like", handlers.AuthMiddleware(cfg), handlers.VideoLikeHandler(cfg, videoStore))
+
+	// Protected routes - Preview generation
+	r.POST("/api/previews/generate", handlers.AuthMiddleware(cfg), func(c *gin.Context) {
+		previewMutex.Lock()
+		defer previewMutex.Unlock()
+
+		if previewRunning {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":    "Preview generation already running",
+				"progress": previewProgress,
+			})
+			return
+		}
+
+		previewRunning = true
+		previewProgress.Running = true
+
+		go func() {
+			generator := handlers.NewPreviewGenerator(cfg, 4)
+			generator.SetProgressCallback(func(total, done, failed int) {
+				previewMutex.Lock()
+				previewProgress.Total = total
+				previewProgress.Done = done
+				previewProgress.Failed = failed
+				previewMutex.Unlock()
+			})
+			generator.GenerateAll()
+
+			previewMutex.Lock()
+			previewRunning = false
+			previewProgress.Running = false
+			previewMutex.Unlock()
+		}()
+
+		c.JSON(http.StatusOK, gin.H{"message": "Preview generation started"})
+	})
+
+	r.GET("/api/previews/status", handlers.AuthMiddleware(cfg), func(c *gin.Context) {
+		previewMutex.Lock()
+		defer previewMutex.Unlock()
+		c.JSON(http.StatusOK, previewProgress)
+	})
 	
 	// Protected routes - Playlists
 	r.GET("/api/playlists", handlers.AuthMiddleware(cfg), handlers.PlaylistHandler(cfg, playlistStore))
@@ -73,5 +128,14 @@ func main() {
 	log.Printf("🎬 Streamlet running on :%s", port)
 	log.Printf("📁 Video directory: %s", cfg.VideoDir)
 	log.Printf("📊 Data directory: %s", cfg.DataDir)
+	
+	// Start preview generation in background on startup
+	go func() {
+		generator := handlers.NewPreviewGenerator(cfg, 4)
+		if err := generator.GenerateAll(); err != nil {
+			log.Printf("❌ Preview generation error: %v", err)
+		}
+	}()
+
 	log.Fatal(r.Run(":" + port))
 }
