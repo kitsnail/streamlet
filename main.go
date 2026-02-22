@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/gin-gonic/gin"
@@ -174,7 +175,7 @@ func main() {
 		port = "8080"
 	}
 	log.Printf("🎬 Streamlet running on :%s", port)
-	log.Printf("📁 Video directory: %s", cfg.VideoDir)
+	log.Printf("📁 Video directories: %s", strings.Join(cfg.VideoDirs, ", "))
 	log.Printf("📊 Data directory: %s", cfg.DataDir)
 	
 	// Start thumbnail and preview generation in background on startup

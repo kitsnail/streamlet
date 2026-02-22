@@ -17,13 +17,14 @@ import (
 
 // Video represents a video file info
 type Video struct {
-	Name     string  `json:"name"`
-	Size     int64   `json:"size"`
-	Path     string  `json:"path"`
-	Modified string  `json:"modified"`
-	Views    int     `json:"views"`
-	Likes    int     `json:"likes"`
-	Liked    bool    `json:"liked"`
+	Name     string `json:"name"`
+	Size     int64  `json:"size"`
+	Path     string `json:"path"`
+	Dir      string `json:"dir,omitempty"` // Source directory index or name
+	Modified string `json:"modified"`
+	Views    int    `json:"views"`
+	Likes    int    `json:"likes"`
+	Liked    bool   `json:"liked"`
 	Hotness  float64 `json:"hotness"`
 }
 
@@ -49,58 +50,61 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 		// Get all stats
 		allStats := store.GetAllStats()
 
-		err := filepath.WalkDir(cfg.VideoDir, func(path string, d fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-
-			// Skip macOS hidden files (._*.mp4) and small files
-			if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".mp4") {
-				// Skip macOS AppleDouble files (._filename)
-				if strings.HasPrefix(d.Name(), "._") {
-					return nil
-				}
-
-				info, err := d.Info()
+		// Scan all video directories
+		for dirIndex, videoDir := range cfg.VideoDirs {
+			filepath.WalkDir(videoDir, func(path string, d fs.DirEntry, err error) error {
 				if err != nil {
-					return nil
+					return err
 				}
 
-				// Skip very small files (< 10MB, likely corrupted or placeholder)
-				if info.Size() < 10*1024*1024 {
-					return nil
+				// Skip macOS hidden files (._*.mp4) and small files
+				if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".mp4") {
+					// Skip macOS AppleDouble files (._filename)
+					if strings.HasPrefix(d.Name(), "._") {
+						return nil
+					}
+
+					info, err := d.Info()
+					if err != nil {
+						return nil
+					}
+
+					// Skip very small files (< 10MB, likely corrupted or placeholder)
+					if info.Size() < 10*1024*1024 {
+						return nil
+					}
+
+					relPath, _ := filepath.Rel(videoDir, path)
+					
+					// Prefix path with directory index to distinguish sources
+					// Format: dirIndex:relPath (e.g., "0:video.mp4", "1:subdir/video.mp4")
+					prefixedPath := fmt.Sprintf("%d:%s", dirIndex, relPath)
+					
+					// Filter by search query
+					if search != "" && !strings.Contains(strings.ToLower(d.Name()), strings.ToLower(search)) {
+						return nil
+					}
+
+					// Get stats
+					stats := allStats[prefixedPath]
+					if stats == nil {
+						stats = &storage.VideoStats{}
+					}
+
+					videos = append(videos, Video{
+						Name:     d.Name(),
+						Size:     info.Size(),
+						Path:     prefixedPath,
+						Dir:      filepath.Base(videoDir),
+						Modified: info.ModTime().Format("2006-01-02 15:04"),
+						Views:    stats.Views,
+						Likes:    stats.Likes,
+						Liked:    stats.Liked,
+						Hotness:  stats.Hotness,
+					})
 				}
-
-				relPath, _ := filepath.Rel(cfg.VideoDir, path)
-				
-				// Filter by search query
-				if search != "" && !strings.Contains(strings.ToLower(d.Name()), strings.ToLower(search)) {
-					return nil
-				}
-
-				// Get stats
-				stats := allStats[relPath]
-				if stats == nil {
-					stats = &storage.VideoStats{}
-				}
-
-				videos = append(videos, Video{
-					Name:     d.Name(),
-					Size:     info.Size(),
-					Path:     relPath,
-					Modified: info.ModTime().Format("2006-01-02 15:04"),
-					Views:    stats.Views,
-					Likes:    stats.Likes,
-					Liked:    stats.Liked,
-					Hotness:  stats.Hotness,
-				})
-			}
-			return nil
-		})
-
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to scan videos"})
-			return
+				return nil
+			})
 		}
 
 		// Sort based on sortBy parameter
@@ -171,8 +175,35 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 			"sort":       sortBy,
 			"order":      order,
 			"videos":     videos[start:end],
+			"videoDirs":  cfg.VideoDirs,
 		})
 	}
+}
+
+// parseVideoPath parses prefixed video path (format: dirIndex:relPath)
+// Returns the absolute path to the video file
+func parseVideoPath(prefixedPath string, cfg *config.Config) (string, error) {
+	// Check if path has prefix
+	if strings.Contains(prefixedPath, ":") {
+		parts := strings.SplitN(prefixedPath, ":", 2)
+		if len(parts) != 2 {
+			return "", fmt.Errorf("invalid path format")
+		}
+		
+		dirIndex, err := strconv.Atoi(parts[0])
+		if err != nil {
+			return "", fmt.Errorf("invalid directory index")
+		}
+		
+		if dirIndex < 0 || dirIndex >= len(cfg.VideoDirs) {
+			return "", fmt.Errorf("directory index out of range")
+		}
+		
+		return filepath.Join(cfg.VideoDirs[dirIndex], parts[1]), nil
+	}
+	
+	// Fallback: use first directory for backward compatibility
+	return filepath.Join(cfg.VideoDir, prefixedPath), nil
 }
 
 // VideoViewHandler increments view count
@@ -192,7 +223,7 @@ func VideoViewHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 		stats := store.GetStats(req.Path)
 
 		c.JSON(http.StatusOK, gin.H{
-			"views": stats.Views,
+			"views":   stats.Views,
 			"hotness": stats.Hotness,
 		})
 	}
@@ -215,8 +246,8 @@ func VideoLikeHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 		stats := store.GetStats(req.Path)
 
 		c.JSON(http.StatusOK, gin.H{
-			"liked":  liked,
-			"likes":  stats.Likes,
+			"liked":   liked,
+			"likes":   stats.Likes,
 			"hotness": stats.Hotness,
 		})
 	}
@@ -229,18 +260,31 @@ func StreamVideo(cfg *config.Config) gin.HandlerFunc {
 		filename := c.Param("filename")
 		filename = strings.TrimPrefix(filename, "/")
 
-		// Construct full path
-		fullPath := filepath.Join(cfg.VideoDir, filename)
-
-		// Security check - prevent path traversal
-		absPath, err := filepath.Abs(fullPath)
+		// Parse prefixed path
+		absPath, err := parseVideoPath(filename, cfg)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
 			return
 		}
 
-		absVideoDir, _ := filepath.Abs(cfg.VideoDir)
-		if !strings.HasPrefix(absPath, absVideoDir) {
+		// Security check - ensure path is within one of the video directories
+		absPath, err = filepath.Abs(absPath)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid path"})
+			return
+		}
+
+		// Check if path is within any allowed directory
+		allowed := false
+		for _, videoDir := range cfg.VideoDirs {
+			absVideoDir, _ := filepath.Abs(videoDir)
+			if strings.HasPrefix(absPath, absVideoDir) {
+				allowed = true
+				break
+			}
+		}
+
+		if !allowed {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}

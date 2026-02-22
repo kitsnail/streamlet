@@ -46,29 +46,31 @@ func (pg *PreviewGenerator) GenerateAll() error {
 		return err
 	}
 
+	// Find all video files from all directories
 	var videos []string
-	err := filepath.WalkDir(pg.cfg.VideoDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".mp4") {
-			if strings.HasPrefix(d.Name(), "._") {
-				return nil
-			}
-			info, err := d.Info()
+	for dirIndex, videoDir := range pg.cfg.VideoDirs {
+		filepath.WalkDir(videoDir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
-				return nil
+				return err
 			}
-			if info.Size() < 10*1024*1024 {
-				return nil
+			if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".mp4") {
+				if strings.HasPrefix(d.Name(), "._") {
+					return nil
+				}
+				info, err := d.Info()
+				if err != nil {
+					return nil
+				}
+				if info.Size() < 10*1024*1024 {
+					return nil
+				}
+				relPath, _ := filepath.Rel(videoDir, path)
+				// Prefix with directory index
+				prefixedPath := fmt.Sprintf("%d:%s", dirIndex, relPath)
+				videos = append(videos, prefixedPath)
 			}
-			relPath, _ := filepath.Rel(pg.cfg.VideoDir, path)
-			videos = append(videos, relPath)
-		}
-		return nil
-	})
-	if err != nil {
-		return err
+			return nil
+		})
 	}
 
 	log.Printf("🎬 Found %d videos, generating previews with %d workers...", len(videos), pg.workers)
@@ -131,8 +133,8 @@ func (pg *PreviewGenerator) GenerateAll() error {
 }
 
 // generatePreview generates a preview for a single video (10 segments, 1 second each)
-func (pg *PreviewGenerator) generatePreview(videoPath string) error {
-	hash := md5.Sum([]byte(videoPath + "_preview"))
+func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
+	hash := md5.Sum([]byte(prefixedPath + "_preview"))
 	previewFilename := hex.EncodeToString(hash[:]) + ".mp4"
 	previewPath := filepath.Join(pg.cfg.ThumbnailDir, previewFilename)
 
@@ -140,7 +142,11 @@ func (pg *PreviewGenerator) generatePreview(videoPath string) error {
 		return nil
 	}
 
-	absVideoPath := filepath.Join(pg.cfg.VideoDir, videoPath)
+	// Parse prefixed path
+	absVideoPath, err := parseVideoPath(prefixedPath, pg.cfg)
+	if err != nil {
+		return err
+	}
 
 	// Get video duration
 	durationCmd := exec.Command("ffprobe",
@@ -239,15 +245,30 @@ func GetPreview(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		fullVideoPath := filepath.Join(cfg.VideoDir, videoPath)
-		absVideoPath, err := filepath.Abs(fullVideoPath)
+		// Parse prefixed path
+		absVideoPath, err := parseVideoPath(videoPath, cfg)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid video path"})
 			return
 		}
 
-		absVideoDir, _ := filepath.Abs(cfg.VideoDir)
-		if !strings.HasPrefix(absVideoPath, absVideoDir) {
+		// Security check
+		absVideoPath, err = filepath.Abs(absVideoPath)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid video path"})
+			return
+		}
+
+		allowed := false
+		for _, videoDir := range cfg.VideoDirs {
+			absVideoDir, _ := filepath.Abs(videoDir)
+			if strings.HasPrefix(absVideoPath, absVideoDir) {
+				allowed = true
+				break
+			}
+		}
+
+		if !allowed {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}

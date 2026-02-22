@@ -44,32 +44,33 @@ func (tg *ThumbnailGenerator) GenerateAll() error {
 		return err
 	}
 
-	// Find all video files
+	// Find all video files from all directories
 	var videos []string
-	err := filepath.WalkDir(tg.cfg.VideoDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".mp4") {
-			// Skip macOS AppleDouble files
-			if strings.HasPrefix(d.Name(), "._") {
-				return nil
-			}
-			// Skip small files
-			info, err := d.Info()
+	for dirIndex, videoDir := range tg.cfg.VideoDirs {
+		filepath.WalkDir(videoDir, func(path string, d os.DirEntry, err error) error {
 			if err != nil {
-				return nil
+				return err
 			}
-			if info.Size() < 10*1024*1024 {
-				return nil
+			if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".mp4") {
+				// Skip macOS AppleDouble files
+				if strings.HasPrefix(d.Name(), "._") {
+					return nil
+				}
+				// Skip small files
+				info, err := d.Info()
+				if err != nil {
+					return nil
+				}
+				if info.Size() < 10*1024*1024 {
+					return nil
+				}
+				relPath, _ := filepath.Rel(videoDir, path)
+				// Prefix with directory index
+				prefixedPath := fmt.Sprintf("%d:%s", dirIndex, relPath)
+				videos = append(videos, prefixedPath)
 			}
-			relPath, _ := filepath.Rel(tg.cfg.VideoDir, path)
-			videos = append(videos, relPath)
-		}
-		return nil
-	})
-	if err != nil {
-		return err
+			return nil
+		})
 	}
 
 	log.Printf("🖼️  Found %d videos, generating thumbnails with %d workers...", len(videos), tg.workers)
@@ -138,9 +139,9 @@ func (tg *ThumbnailGenerator) GenerateAll() error {
 }
 
 // generateThumbnail generates a thumbnail for a single video
-func (tg *ThumbnailGenerator) generateThumbnail(videoPath string) error {
+func (tg *ThumbnailGenerator) generateThumbnail(prefixedPath string) error {
 	// Check if thumbnail already exists
-	hash := md5.Sum([]byte(videoPath))
+	hash := md5.Sum([]byte(prefixedPath))
 	thumbnailFilename := hex.EncodeToString(hash[:]) + ".jpg"
 	thumbnailPath := filepath.Join(tg.cfg.ThumbnailDir, thumbnailFilename)
 
@@ -148,7 +149,11 @@ func (tg *ThumbnailGenerator) generateThumbnail(videoPath string) error {
 		return nil // Already exists
 	}
 
-	absVideoPath := filepath.Join(tg.cfg.VideoDir, videoPath)
+	// Parse prefixed path
+	absVideoPath, err := parseVideoPath(prefixedPath, tg.cfg)
+	if err != nil {
+		return err
+	}
 
 	// Get video duration using ffprobe
 	durationCmd := exec.Command("ffprobe",
@@ -193,16 +198,30 @@ func GetThumbnail(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Security check
-		fullVideoPath := filepath.Join(cfg.VideoDir, videoPath)
-		absVideoPath, err := filepath.Abs(fullVideoPath)
+		// Parse prefixed path
+		absVideoPath, err := parseVideoPath(videoPath, cfg)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid video path"})
 			return
 		}
 
-		absVideoDir, _ := filepath.Abs(cfg.VideoDir)
-		if !strings.HasPrefix(absVideoPath, absVideoDir) {
+		// Security check - ensure path is within one of the video directories
+		absVideoPath, err = filepath.Abs(absVideoPath)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid video path"})
+			return
+		}
+
+		allowed := false
+		for _, videoDir := range cfg.VideoDirs {
+			absVideoDir, _ := filepath.Abs(videoDir)
+			if strings.HasPrefix(absVideoPath, absVideoDir) {
+				allowed = true
+				break
+			}
+		}
+
+		if !allowed {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Access denied"})
 			return
 		}
