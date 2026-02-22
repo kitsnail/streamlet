@@ -13,9 +13,16 @@ import (
 )
 
 var (
-	previewRunning  bool
-	previewMutex    sync.Mutex
-	previewProgress struct {
+	previewRunning   bool
+	thumbnailRunning bool
+	genMutex         sync.Mutex
+	previewProgress  struct {
+		Total   int
+		Done    int
+		Failed  int
+		Running bool
+	}
+	thumbnailProgress struct {
 		Total   int
 		Done    int
 		Failed  int
@@ -60,10 +67,10 @@ func main() {
 	r.POST("/api/view", handlers.AuthMiddleware(cfg), handlers.VideoViewHandler(cfg, videoStore))
 	r.POST("/api/like", handlers.AuthMiddleware(cfg), handlers.VideoLikeHandler(cfg, videoStore))
 
-	// Protected routes - Preview generation
+	// Protected routes - Media generation
 	r.POST("/api/previews/generate", handlers.AuthMiddleware(cfg), func(c *gin.Context) {
-		previewMutex.Lock()
-		defer previewMutex.Unlock()
+		genMutex.Lock()
+		defer genMutex.Unlock()
 
 		if previewRunning {
 			c.JSON(http.StatusConflict, gin.H{
@@ -79,27 +86,68 @@ func main() {
 		go func() {
 			generator := handlers.NewPreviewGenerator(cfg, 4)
 			generator.SetProgressCallback(func(total, done, failed int) {
-				previewMutex.Lock()
+				genMutex.Lock()
 				previewProgress.Total = total
 				previewProgress.Done = done
 				previewProgress.Failed = failed
-				previewMutex.Unlock()
+				genMutex.Unlock()
 			})
 			generator.GenerateAll()
 
-			previewMutex.Lock()
+			genMutex.Lock()
 			previewRunning = false
 			previewProgress.Running = false
-			previewMutex.Unlock()
+			genMutex.Unlock()
 		}()
 
 		c.JSON(http.StatusOK, gin.H{"message": "Preview generation started"})
 	})
 
 	r.GET("/api/previews/status", handlers.AuthMiddleware(cfg), func(c *gin.Context) {
-		previewMutex.Lock()
-		defer previewMutex.Unlock()
+		genMutex.Lock()
+		defer genMutex.Unlock()
 		c.JSON(http.StatusOK, previewProgress)
+	})
+
+	r.POST("/api/thumbnails/generate", handlers.AuthMiddleware(cfg), func(c *gin.Context) {
+		genMutex.Lock()
+		defer genMutex.Unlock()
+
+		if thumbnailRunning {
+			c.JSON(http.StatusConflict, gin.H{
+				"error":    "Thumbnail generation already running",
+				"progress": thumbnailProgress,
+			})
+			return
+		}
+
+		thumbnailRunning = true
+		thumbnailProgress.Running = true
+
+		go func() {
+			generator := handlers.NewThumbnailGenerator(cfg, 4)
+			generator.SetProgressCallback(func(total, done, failed int) {
+				genMutex.Lock()
+				thumbnailProgress.Total = total
+				thumbnailProgress.Done = done
+				thumbnailProgress.Failed = failed
+				genMutex.Unlock()
+			})
+			generator.GenerateAll()
+
+			genMutex.Lock()
+			thumbnailRunning = false
+			thumbnailProgress.Running = false
+			genMutex.Unlock()
+		}()
+
+		c.JSON(http.StatusOK, gin.H{"message": "Thumbnail generation started"})
+	})
+
+	r.GET("/api/thumbnails/status", handlers.AuthMiddleware(cfg), func(c *gin.Context) {
+		genMutex.Lock()
+		defer genMutex.Unlock()
+		c.JSON(http.StatusOK, thumbnailProgress)
 	})
 	
 	// Protected routes - Playlists
@@ -129,10 +177,19 @@ func main() {
 	log.Printf("📁 Video directory: %s", cfg.VideoDir)
 	log.Printf("📊 Data directory: %s", cfg.DataDir)
 	
-	// Start preview generation in background on startup
+	// Start thumbnail and preview generation in background on startup
 	go func() {
-		generator := handlers.NewPreviewGenerator(cfg, 4)
-		if err := generator.GenerateAll(); err != nil {
+		// Run thumbnail generation first (faster)
+		tg := handlers.NewThumbnailGenerator(cfg, 4)
+		if err := tg.GenerateAll(); err != nil {
+			log.Printf("❌ Thumbnail generation error: %v", err)
+		}
+	}()
+
+	go func() {
+		// Run preview generation in parallel
+		pg := handlers.NewPreviewGenerator(cfg, 4)
+		if err := pg.GenerateAll(); err != nil {
 			log.Printf("❌ Preview generation error: %v", err)
 		}
 	}()
