@@ -65,6 +65,8 @@ func runMigrations(db *sql.DB) error {
 			liked INTEGER NOT NULL DEFAULT 0,
 			last_viewed DATETIME,
 			hotness REAL NOT NULL DEFAULT 0,
+			thumbnail_hash TEXT,
+			preview_hash TEXT,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)
@@ -113,6 +115,16 @@ func runMigrations(db *sql.DB) error {
 		if _, err := db.Exec(indexSQL); err != nil {
 			return fmt.Errorf("failed to create index: %w", err)
 		}
+	}
+	// Add new columns if they don't exist (migration for existing databases)
+	_, err = db.Exec(`ALTER TABLE video_stats ADD COLUMN thumbnail_hash TEXT`)
+	if err != nil {
+		// Column already exists, ignore error
+	}
+
+	_, err = db.Exec(`ALTER TABLE video_stats ADD COLUMN preview_hash TEXT`)
+	if err != nil {
+		// Column already exists, ignore error
 	}
 
 	return nil

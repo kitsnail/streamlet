@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,24 +13,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/kitsnail/streamlet/config"
+	"github.com/kitsnail/streamlet/storage"
 )
-
-// ProgressCallback is called during generation
-type ProgressCallback func(total, done, failed int)
 
 // PreviewGenerator handles batch preview generation
 type PreviewGenerator struct {
 	cfg      *config.Config
+	storage  *storage.Storage
 	workers  int
 	callback ProgressCallback
 }
 
 // NewPreviewGenerator creates a preview generator
-func NewPreviewGenerator(cfg *config.Config, workers int) *PreviewGenerator {
+func NewPreviewGenerator(cfg *config.Config, storage *storage.Storage, workers int) *PreviewGenerator {
 	if workers < 1 {
 		workers = 4
 	}
-	return &PreviewGenerator{cfg: cfg, workers: workers}
+	return &PreviewGenerator{cfg: cfg, storage: storage, workers: workers}
 }
 
 // SetProgressCallback sets the progress callback
@@ -134,18 +131,38 @@ func (pg *PreviewGenerator) GenerateAll() error {
 
 // generatePreview generates a preview for a single video (60 segments, 0.5 second each = 30 seconds total)
 func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
-	hash := md5.Sum([]byte(prefixedPath + "_preview"))
-	previewFilename := hex.EncodeToString(hash[:]) + ".mp4"
-	previewPath := filepath.Join(pg.cfg.ThumbnailDir, previewFilename)
-
-	if _, err := os.Stat(previewPath); err == nil {
-		return nil
-	}
-
 	// Parse prefixed path
 	absVideoPath, err := parseVideoPath(prefixedPath, pg.cfg)
 	if err != nil {
 		return err
+	}
+
+	// Get video name from path
+	videoName := filepath.Base(absVideoPath)
+
+	// Check database for existing hash
+	existingHash := pg.storage.GetPreviewHash(prefixedPath)
+	if existingHash != "" {
+		previewPath := filepath.Join(pg.cfg.ThumbnailDir, existingHash+".mp4")
+		if _, err := os.Stat(previewPath); err == nil {
+			return nil // Already exists with valid hash
+		}
+	}
+
+	// Calculate file content hash
+	contentHash, err := storage.GetFileContentHash(absVideoPath)
+	if err != nil {
+		return fmt.Errorf("failed to calculate content hash: %w", err)
+	}
+
+	previewFilename := contentHash + ".mp4"
+	previewPath := filepath.Join(pg.cfg.ThumbnailDir, previewFilename)
+
+	// Check if preview already exists (same content)
+	if _, err := os.Stat(previewPath); err == nil {
+		// File exists, just update database
+		pg.storage.SetPreviewHash(prefixedPath, videoName, contentHash)
+		return nil
 	}
 
 	// Get video duration
@@ -171,7 +188,7 @@ func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
 	segments := pg.cfg.PreviewSegments
 	const segmentDuration = 0.5
 	
-	tempDir := filepath.Join(pg.cfg.ThumbnailDir, "temp_"+hex.EncodeToString(hash[:])[:8])
+	tempDir := filepath.Join(pg.cfg.ThumbnailDir, "temp_"+contentHash[:8])
 	os.MkdirAll(tempDir, 0755)
 	defer os.RemoveAll(tempDir)
 
@@ -234,14 +251,18 @@ func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
 			"-movflags", "+faststart",
 			previewPath,
 		)
-		return fallbackCmd.Run()
+		if err := fallbackCmd.Run(); err != nil {
+			return err
+		}
 	}
 
+	// Update database with new hash
+	pg.storage.SetPreviewHash(prefixedPath, videoName, contentHash)
 	return nil
 }
 
 // GetPreview returns or generates a preview video
-func GetPreview(cfg *config.Config) gin.HandlerFunc {
+func GetPreview(cfg *config.Config, store *storage.Storage) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		videoPath := c.Query("video")
 		if videoPath == "" {
@@ -282,16 +303,36 @@ func GetPreview(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		hash := md5.Sum([]byte(videoPath + "_preview"))
-		previewFilename := hex.EncodeToString(hash[:]) + ".mp4"
+		// Check database for existing hash
+		existingHash := store.GetPreviewHash(videoPath)
+		if existingHash != "" {
+			previewPath := filepath.Join(cfg.ThumbnailDir, existingHash+".mp4")
+			if _, err := os.Stat(previewPath); err == nil {
+				c.File(previewPath)
+				return
+			}
+		}
+
+		// Calculate file content hash
+		contentHash, err := storage.GetFileContentHash(absVideoPath)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate content hash"})
+			return
+		}
+
+		previewFilename := contentHash + ".mp4"
 		previewPath := filepath.Join(cfg.ThumbnailDir, previewFilename)
 
+		// Check if preview exists (same content already generated)
 		if _, err := os.Stat(previewPath); err == nil {
+			// Update database and return
+			store.SetPreviewHash(videoPath, filepath.Base(absVideoPath), contentHash)
 			c.File(previewPath)
 			return
 		}
 
-		pg := NewPreviewGenerator(cfg, 1)
+		// Generate preview on-demand (fallback)
+		pg := NewPreviewGenerator(cfg, store, 1)
 		if err := pg.generatePreview(videoPath); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate preview"})
 			return

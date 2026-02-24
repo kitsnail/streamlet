@@ -6,13 +6,15 @@ import (
 )
 
 type VideoStats struct {
-	Path       string    `json:"path"`
-	Name       string    `json:"name"`
-	Views      int       `json:"views"`
-	Likes      int       `json:"likes"`
-	Liked      bool      `json:"liked"`
-	LastViewed time.Time `json:"lastViewed"`
-	Hotness    float64   `json:"hotness"`
+	Path          string    `json:"path"`
+	Name          string    `json:"name"`
+	Views         int       `json:"views"`
+	Likes         int       `json:"likes"`
+	Liked         bool      `json:"liked"`
+	LastViewed    time.Time `json:"lastViewed"`
+	Hotness       float64   `json:"hotness"`
+	ThumbnailHash string    `json:"thumbnailHash"`
+	PreviewHash   string    `json:"previewHash"`
 }
 
 type Storage struct {
@@ -182,4 +184,48 @@ func (s *Storage) updateHotness(path string) {
 	hotness := float64(views)*1.0 + float64(likes)*5.0 + recencyBonus
 
 	s.db.Exec(`UPDATE video_stats SET hotness = ? WHERE path = ?`, hotness, path)
+}
+
+// GetThumbnailHash retrieves the thumbnail hash for a video path
+func (s *Storage) GetThumbnailHash(path string) string {
+	var hash sql.NullString
+	err := s.db.QueryRow(`SELECT thumbnail_hash FROM video_stats WHERE path = ?`, path).Scan(&hash)
+	if err != nil {
+		return ""
+	}
+	return hash.String
+}
+
+// GetPreviewHash retrieves the preview hash for a video path
+func (s *Storage) GetPreviewHash(path string) string {
+	var hash sql.NullString
+	err := s.db.QueryRow(`SELECT preview_hash FROM video_stats WHERE path = ?`, path).Scan(&hash)
+	if err != nil {
+		return ""
+	}
+	return hash.String
+}
+
+// SetThumbnailHash updates the thumbnail hash for a video path
+func (s *Storage) SetThumbnailHash(path, name, hash string) {
+	s.db.Exec(`
+		INSERT INTO video_stats (path, name, thumbnail_hash, updated_at)
+		VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(path) DO UPDATE SET
+			thumbnail_hash = ?,
+			name = COALESCE(NULLIF(?, ''), name),
+			updated_at = CURRENT_TIMESTAMP
+	`, path, name, hash, hash, name)
+}
+
+// SetPreviewHash updates the preview hash for a video path
+func (s *Storage) SetPreviewHash(path, name, hash string) {
+	s.db.Exec(`
+		INSERT INTO video_stats (path, name, preview_hash, updated_at)
+		VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(path) DO UPDATE SET
+			preview_hash = ?,
+			name = COALESCE(NULLIF(?, ''), name),
+			updated_at = CURRENT_TIMESTAMP
+	`, path, name, hash, hash, name)
 }

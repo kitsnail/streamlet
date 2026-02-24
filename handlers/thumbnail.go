@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"net/http"
@@ -15,21 +13,23 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/kitsnail/streamlet/config"
+	"github.com/kitsnail/streamlet/storage"
 )
 
 // ThumbnailGenerator handles batch thumbnail generation
 type ThumbnailGenerator struct {
 	cfg      *config.Config
+	storage  *storage.Storage
 	workers  int
 	callback ProgressCallback
 }
 
 // NewThumbnailGenerator creates a thumbnail generator
-func NewThumbnailGenerator(cfg *config.Config, workers int) *ThumbnailGenerator {
+func NewThumbnailGenerator(cfg *config.Config, storage *storage.Storage, workers int) *ThumbnailGenerator {
 	if workers < 1 {
 		workers = 4
 	}
-	return &ThumbnailGenerator{cfg: cfg, workers: workers}
+	return &ThumbnailGenerator{cfg: cfg, storage: storage, workers: workers}
 }
 
 // SetProgressCallback sets the progress callback
@@ -140,19 +140,38 @@ func (tg *ThumbnailGenerator) GenerateAll() error {
 
 // generateThumbnail generates a thumbnail for a single video
 func (tg *ThumbnailGenerator) generateThumbnail(prefixedPath string) error {
-	// Check if thumbnail already exists
-	hash := md5.Sum([]byte(prefixedPath))
-	thumbnailFilename := hex.EncodeToString(hash[:]) + ".jpg"
-	thumbnailPath := filepath.Join(tg.cfg.ThumbnailDir, thumbnailFilename)
-
-	if _, err := os.Stat(thumbnailPath); err == nil {
-		return nil // Already exists
-	}
-
 	// Parse prefixed path
 	absVideoPath, err := parseVideoPath(prefixedPath, tg.cfg)
 	if err != nil {
 		return err
+	}
+
+	// Get video name from path
+	videoName := filepath.Base(absVideoPath)
+
+	// Check database for existing hash
+	existingHash := tg.storage.GetThumbnailHash(prefixedPath)
+	if existingHash != "" {
+		thumbnailPath := filepath.Join(tg.cfg.ThumbnailDir, existingHash+".jpg")
+		if _, err := os.Stat(thumbnailPath); err == nil {
+			return nil // Already exists with valid hash
+		}
+	}
+
+	// Calculate file content hash
+	contentHash, err := storage.GetFileContentHash(absVideoPath)
+	if err != nil {
+		return fmt.Errorf("failed to calculate content hash: %w", err)
+	}
+
+	thumbnailFilename := contentHash + ".jpg"
+	thumbnailPath := filepath.Join(tg.cfg.ThumbnailDir, thumbnailFilename)
+
+	// Check if thumbnail already exists (same content)
+	if _, err := os.Stat(thumbnailPath); err == nil {
+		// File exists, just update database
+		tg.storage.SetThumbnailHash(prefixedPath, videoName, contentHash)
+		return nil
 	}
 
 	// Get video duration using ffprobe
@@ -186,11 +205,17 @@ func (tg *ThumbnailGenerator) generateThumbnail(prefixedPath string) error {
 		thumbnailPath,
 	)
 
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	// Update database with new hash
+	tg.storage.SetThumbnailHash(prefixedPath, videoName, contentHash)
+	return nil
 }
 
 // GetThumbnail returns or generates a video thumbnail (for API handler)
-func GetThumbnail(cfg *config.Config) gin.HandlerFunc {
+func GetThumbnail(cfg *config.Config, store *storage.Storage) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		videoPath := c.Query("video")
 		if videoPath == "" {
@@ -231,19 +256,36 @@ func GetThumbnail(cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// Generate thumbnail filename
-		hash := md5.Sum([]byte(videoPath))
-		thumbnailFilename := hex.EncodeToString(hash[:]) + ".jpg"
+		// Check database for existing hash
+		existingHash := store.GetThumbnailHash(videoPath)
+		if existingHash != "" {
+			thumbnailPath := filepath.Join(cfg.ThumbnailDir, existingHash+".jpg")
+			if _, err := os.Stat(thumbnailPath); err == nil {
+				c.File(thumbnailPath)
+				return
+			}
+		}
+
+		// Calculate file content hash
+		contentHash, err := storage.GetFileContentHash(absVideoPath)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate content hash"})
+			return
+		}
+
+		thumbnailFilename := contentHash + ".jpg"
 		thumbnailPath := filepath.Join(cfg.ThumbnailDir, thumbnailFilename)
 
-		// Check if thumbnail exists
+		// Check if thumbnail exists (same content already generated)
 		if _, err := os.Stat(thumbnailPath); err == nil {
+			// Update database and return
+			store.SetThumbnailHash(videoPath, filepath.Base(absVideoPath), contentHash)
 			c.File(thumbnailPath)
 			return
 		}
 
 		// Generate thumbnail on-demand (fallback)
-		tg := NewThumbnailGenerator(cfg, 1)
+		tg := NewThumbnailGenerator(cfg, store, 1)
 		if err := tg.generateThumbnail(videoPath); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate thumbnail"})
 			return

@@ -63,8 +63,8 @@ func main() {
 	// Protected routes - Videos
 	r.GET("/api/videos", handlers.AuthMiddleware(cfg), handlers.VideoListHandler(cfg, videoStore))
 	r.GET("/api/video/*filename", handlers.AuthMiddleware(cfg), handlers.StreamVideo(cfg))
-	r.GET("/api/thumbnail", handlers.AuthMiddleware(cfg), handlers.GetThumbnail(cfg))
-	r.GET("/api/preview", handlers.AuthMiddleware(cfg), handlers.GetPreview(cfg))
+	r.GET("/api/thumbnail", handlers.AuthMiddleware(cfg), handlers.GetThumbnail(cfg, videoStore))
+	r.GET("/api/preview", handlers.AuthMiddleware(cfg), handlers.GetPreview(cfg, videoStore))
 	r.POST("/api/view", handlers.AuthMiddleware(cfg), handlers.VideoViewHandler(cfg, videoStore))
 	r.POST("/api/like", handlers.AuthMiddleware(cfg), handlers.VideoLikeHandler(cfg, videoStore))
 
@@ -85,7 +85,7 @@ func main() {
 		previewProgress.Running = true
 
 		go func() {
-			generator := handlers.NewPreviewGenerator(cfg, 4)
+			generator := handlers.NewPreviewGenerator(cfg, videoStore, 4)
 			generator.SetProgressCallback(func(total, done, failed int) {
 				genMutex.Lock()
 				previewProgress.Total = total
@@ -126,7 +126,7 @@ func main() {
 		thumbnailProgress.Running = true
 
 		go func() {
-			generator := handlers.NewThumbnailGenerator(cfg, 4)
+			generator := handlers.NewThumbnailGenerator(cfg, videoStore, 4)
 			generator.SetProgressCallback(func(total, done, failed int) {
 				genMutex.Lock()
 				thumbnailProgress.Total = total
@@ -181,7 +181,7 @@ func main() {
 	// Start thumbnail and preview generation in background on startup
 	go func() {
 		// Run thumbnail generation first (faster)
-		tg := handlers.NewThumbnailGenerator(cfg, 4)
+		tg := handlers.NewThumbnailGenerator(cfg, videoStore, 4)
 		if err := tg.GenerateAll(); err != nil {
 			log.Printf("❌ Thumbnail generation error: %v", err)
 		}
@@ -189,7 +189,7 @@ func main() {
 
 	go func() {
 		// Run preview generation in parallel
-		pg := handlers.NewPreviewGenerator(cfg, 4)
+		pg := handlers.NewPreviewGenerator(cfg, videoStore, 4)
 		if err := pg.GenerateAll(); err != nil {
 			log.Printf("❌ Preview generation error: %v", err)
 		}
