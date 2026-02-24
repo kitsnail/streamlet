@@ -132,7 +132,7 @@ func (pg *PreviewGenerator) GenerateAll() error {
 	return nil
 }
 
-// generatePreview generates a preview for a single video (10 segments, 1 second each)
+// generatePreview generates a preview for a single video (30 segments, 0.5 second each = 15 seconds total)
 func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
 	hash := md5.Sum([]byte(prefixedPath + "_preview"))
 	previewFilename := hex.EncodeToString(hash[:]) + ".mp4"
@@ -162,21 +162,25 @@ func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
 
 	durationStr := strings.TrimSpace(string(durationOutput))
 	duration, _ := strconv.ParseFloat(durationStr, 64)
-	if duration < 10 {
+	if duration < 15 {
 		duration = 600
 	}
 
-	// Generate 10 segments, 1 second each, evenly distributed
-	// Timestamps: 5%, 15%, 25%, ..., 95% of duration
+	// Generate 30 segments, 0.5 second each, evenly distributed
+	// Timestamps: ~2%, 5%, 8%, ..., 98% of duration (every ~3.3%)
+	const segments = 30
+	const segmentDuration = 0.5
+	
 	tempDir := filepath.Join(pg.cfg.ThumbnailDir, "temp_"+hex.EncodeToString(hash[:])[:8])
 	os.MkdirAll(tempDir, 0755)
 	defer os.RemoveAll(tempDir)
 
-	segmentFiles := make([]string, 10)
+	segmentFiles := make([]string, segments)
 	success := true
 
-	for i := 0; i < 10; i++ {
-		ts := duration * float64(5+i*10) / 100.0
+	for i := 0; i < segments; i++ {
+		// Distribute timestamps: start from ~2%, end at ~98%
+		ts := duration * float64(2+i*96/segments) / 100.0
 		segmentPath := filepath.Join(tempDir, fmt.Sprintf("seg%d.ts", i))
 		segmentFiles[i] = segmentPath
 
@@ -184,7 +188,7 @@ func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
 			"-y",
 			"-ss", fmt.Sprintf("%.2f", ts),
 			"-i", absVideoPath,
-			"-t", "1",
+			"-t", fmt.Sprintf("%.1f", segmentDuration),
 			"-c:v", "libx264",
 			"-crf", "28",
 			"-preset", "fast",
@@ -213,16 +217,16 @@ func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
 	}
 
 	if !success {
-		// Fallback: simple 10-second preview from middle
+		// Fallback: simple 15-second preview from middle
 		midPoint := duration / 2
-		if midPoint < 5 {
+		if midPoint < 7 {
 			midPoint = 0
 		}
 		fallbackCmd := exec.Command("ffmpeg",
 			"-y",
 			"-ss", fmt.Sprintf("%.2f", midPoint),
 			"-i", absVideoPath,
-			"-t", "10",
+			"-t", "15",
 			"-c:v", "libx264",
 			"-crf", "28",
 			"-preset", "fast",
