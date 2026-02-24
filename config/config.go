@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"strconv"
 )
 
 type Config struct {
@@ -15,6 +16,7 @@ type Config struct {
 	Username      string
 	Password      string
 	Env           string
+	PreviewSegments  int      // Number of preview segments (default: 60)
 }
 
 func Load() *Config {
@@ -32,7 +34,8 @@ func Load() *Config {
 		JWTSecret:    getEnv("JWT_SECRET", "streamlet-secret-change-me"),
 		Username:     getEnv("AUTH_USER", "admin"),
 		Password:     getEnv("AUTH_PASS", "admin123"),
-		Env:          getEnv("ENV", "development"),
+		Env:             getEnv("ENV", "development"),
+		PreviewSegments: getEnvInt("PREVIEW_SEGMENTS", 60),
 	}
 }
 
@@ -81,6 +84,15 @@ func parseVideoDirs() []string {
 func getEnv(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if value := os.Getenv(key); value != "" {
+		if intVal, err := strconv.Atoi(value); err == nil {
+			return intVal
+		}
 	}
 	return fallback
 }

@@ -166,9 +166,9 @@ func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
 		duration = 600
 	}
 
-	// Generate 60 segments, 0.5 second each, evenly distributed
+	// Generate segments, 0.5 second each, evenly distributed
 	// Timestamps: ~2%, 3.6%, 5.2%, ..., 98% of duration (every ~1.6%)
-	const segments = 60
+	segments := pg.cfg.PreviewSegments
 	const segmentDuration = 0.5
 	
 	tempDir := filepath.Join(pg.cfg.ThumbnailDir, "temp_"+hex.EncodeToString(hash[:])[:8])
