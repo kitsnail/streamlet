@@ -132,7 +132,7 @@ func (pg *PreviewGenerator) GenerateAll() error {
 	return nil
 }
 
-// generatePreview generates a preview for a single video (30 segments, 0.5 second each = 15 seconds total)
+// generatePreview generates a preview for a single video (60 segments, 0.5 second each = 30 seconds total)
 func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
 	hash := md5.Sum([]byte(prefixedPath + "_preview"))
 	previewFilename := hex.EncodeToString(hash[:]) + ".mp4"
@@ -162,13 +162,13 @@ func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
 
 	durationStr := strings.TrimSpace(string(durationOutput))
 	duration, _ := strconv.ParseFloat(durationStr, 64)
-	if duration < 15 {
+	if duration < 30 {
 		duration = 600
 	}
 
-	// Generate 30 segments, 0.5 second each, evenly distributed
-	// Timestamps: ~2%, 5%, 8%, ..., 98% of duration (every ~3.3%)
-	const segments = 30
+	// Generate 60 segments, 0.5 second each, evenly distributed
+	// Timestamps: ~2%, 3.6%, 5.2%, ..., 98% of duration (every ~1.6%)
+	const segments = 60
 	const segmentDuration = 0.5
 	
 	tempDir := filepath.Join(pg.cfg.ThumbnailDir, "temp_"+hex.EncodeToString(hash[:])[:8])
@@ -217,16 +217,16 @@ func (pg *PreviewGenerator) generatePreview(prefixedPath string) error {
 	}
 
 	if !success {
-		// Fallback: simple 15-second preview from middle
+		// Fallback: simple 30-second preview from middle
 		midPoint := duration / 2
-		if midPoint < 7 {
+		if midPoint < 15 {
 			midPoint = 0
 		}
 		fallbackCmd := exec.Command("ffmpeg",
 			"-y",
 			"-ss", fmt.Sprintf("%.2f", midPoint),
 			"-i", absVideoPath,
-			"-t", "15",
+			"-t", "30",
 			"-c:v", "libx264",
 			"-crf", "28",
 			"-preset", "fast",
