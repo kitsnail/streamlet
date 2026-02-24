@@ -1,161 +1,185 @@
 package storage
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"sync"
+	"database/sql"
 	"time"
 )
 
-// VideoStats represents statistics for a video
 type VideoStats struct {
-	Path        string    `json:"path"`
-	Name        string    `json:"name"`
-	Views       int       `json:"views"`
-	Likes       int       `json:"likes"`
-	Liked       bool      `json:"liked"`
-	LastViewed  time.Time `json:"lastViewed"`
-	Hotness     float64   `json:"hotness"`
+	Path       string    `json:"path"`
+	Name       string    `json:"name"`
+	Views      int       `json:"views"`
+	Likes      int       `json:"likes"`
+	Liked      bool      `json:"liked"`
+	LastViewed time.Time `json:"lastViewed"`
+	Hotness    float64   `json:"hotness"`
 }
 
-// Storage handles video statistics persistence
 type Storage struct {
-	filePath string
-	stats    map[string]*VideoStats
-	mu       sync.RWMutex
+	db *sql.DB
 }
 
-// NewStorage creates a new storage instance
 func NewStorage(dataDir string) *Storage {
-	s := &Storage{
-		filePath: filepath.Join(dataDir, "video-stats.json"),
-		stats:    make(map[string]*VideoStats),
-	}
-	s.load()
-	return s
-}
-
-// load reads stats from file
-func (s *Storage) load() error {
-	data, err := os.ReadFile(s.filePath)
+	db, err := InitDB(dataDir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil // File doesn't exist yet
-		}
-		return err
+		panic(err)
 	}
-
-	var stats map[string]*VideoStats
-	if err := json.Unmarshal(data, &stats); err != nil {
-		return err
-	}
-
-	s.stats = stats
-	return nil
+	return &Storage{db: db}
 }
 
-// save writes stats to file
-func (s *Storage) save() error {
-	data, err := json.MarshalIndent(s.stats, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	return os.WriteFile(s.filePath, data, 0644)
-}
-
-// GetStats returns stats for a video
 func (s *Storage) GetStats(path string) *VideoStats {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	var stats VideoStats
+	var lastViewed sql.NullTime
+	var name sql.NullString
 
-	if stats, ok := s.stats[path]; ok {
-		return stats
+	err := s.db.QueryRow(`
+		SELECT path, name, views, likes, liked, last_viewed, hotness
+		FROM video_stats WHERE path = ?
+	`, path).Scan(&stats.Path, &name, &stats.Views, &stats.Likes, &stats.Liked, &lastViewed, &stats.Hotness)
+
+	if err == sql.ErrNoRows {
+		return &VideoStats{
+			Path:    path,
+			Views:   0,
+			Likes:   0,
+			Liked:   false,
+			Hotness: 0,
+		}
 	}
 
-	return &VideoStats{
-		Path:   path,
-		Views:  0,
-		Likes:  0,
-		Liked:  false,
-		Hotness: 0,
+	if err != nil {
+		return &VideoStats{
+			Path:    path,
+			Views:   0,
+			Likes:   0,
+			Liked:   false,
+			Hotness: 0,
+		}
 	}
+
+	stats.Name = name.String
+	if lastViewed.Valid {
+		stats.LastViewed = lastViewed.Time
+	}
+
+	return &stats
 }
 
-// GetAllStats returns all video stats
 func (s *Storage) GetAllStats() map[string]*VideoStats {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	rows, err := s.db.Query(`
+		SELECT path, name, views, likes, liked, last_viewed, hotness
+		FROM video_stats
+	`)
+	if err != nil {
+		return make(map[string]*VideoStats)
+	}
+	defer rows.Close()
 
 	result := make(map[string]*VideoStats)
-	for k, v := range s.stats {
-		result[k] = v
+	for rows.Next() {
+		var stats VideoStats
+		var lastViewed sql.NullTime
+		var name sql.NullString
+
+		err := rows.Scan(&stats.Path, &name, &stats.Views, &stats.Likes, &stats.Liked, &lastViewed, &stats.Hotness)
+		if err != nil {
+			continue
+		}
+
+		stats.Name = name.String
+		if lastViewed.Valid {
+			stats.LastViewed = lastViewed.Time
+		}
+		result[stats.Path] = &stats
 	}
+
 	return result
 }
 
-// IncrementViews increments view count for a video
 func (s *Storage) IncrementViews(path, name string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	now := time.Now()
+	_, err := s.db.Exec(`
+		INSERT INTO video_stats (path, name, views, last_viewed, updated_at)
+		VALUES (?, ?, 1, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(path) DO UPDATE SET
+			views = views + 1,
+			name = COALESCE(NULLIF(?, ''), name),
+			last_viewed = ?,
+			updated_at = CURRENT_TIMESTAMP
+	`, path, name, now, name, now)
 
-	stats, ok := s.stats[path]
-	if !ok {
-		stats = &VideoStats{
-			Path: path,
-			Name: name,
-		}
-		s.stats[path] = stats
+	if err != nil {
+		return
 	}
 
-	stats.Views++
-	stats.LastViewed = time.Now()
-	s.updateHotness(stats)
-	s.save()
+	s.updateHotness(path)
 }
 
-// ToggleLike toggles like status for a video
 func (s *Storage) ToggleLike(path, name string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	stats, ok := s.stats[path]
-	if !ok {
-		stats = &VideoStats{
-			Path: path,
-			Name: name,
-		}
-		s.stats[path] = stats
+	var liked bool
+	err := s.db.QueryRow(`SELECT liked FROM video_stats WHERE path = ?`, path).Scan(&liked)
+	if err == sql.ErrNoRows {
+		liked = false
+	} else if err != nil {
+		return false
 	}
 
-	stats.Liked = !stats.Liked
-	if stats.Liked {
-		stats.Likes++
+	newLiked := !liked
+
+	if liked {
+		_, err = s.db.Exec(`
+			INSERT INTO video_stats (path, name, likes, liked, updated_at)
+			VALUES (?, ?, 0, 0, CURRENT_TIMESTAMP)
+			ON CONFLICT(path) DO UPDATE SET
+				likes = likes - 1,
+				liked = 0,
+				name = COALESCE(NULLIF(?, ''), name),
+				updated_at = CURRENT_TIMESTAMP
+		`, path, name, name)
 	} else {
-		stats.Likes--
+		_, err = s.db.Exec(`
+			INSERT INTO video_stats (path, name, likes, liked, updated_at)
+			VALUES (?, ?, 1, 1, CURRENT_TIMESTAMP)
+			ON CONFLICT(path) DO UPDATE SET
+				likes = likes + 1,
+				liked = 1,
+				name = COALESCE(NULLIF(?, ''), name),
+				updated_at = CURRENT_TIMESTAMP
+		`, path, name, name)
 	}
-	s.updateHotness(stats)
-	s.save()
 
-	return stats.Liked
+	if err != nil {
+		return false
+	}
+
+	s.updateHotness(path)
+	return newLiked
 }
 
-// updateHotness calculates hotness score
-// Hotness = views * 1.0 + likes * 5.0 + recency bonus
-func (s *Storage) updateHotness(stats *VideoStats) {
-	daysSinceViewed := time.Since(stats.LastViewed).Hours() / 24
-	
-	// Recency bonus: videos viewed in last 7 days get bonus
+func (s *Storage) updateHotness(path string) {
+	var views int
+	var likes int
+	var lastViewed sql.NullTime
+
+	err := s.db.QueryRow(`
+		SELECT views, likes, last_viewed FROM video_stats WHERE path = ?
+	`, path).Scan(&views, &likes, &lastViewed)
+
+	if err != nil {
+		return
+	}
+
+	daysSinceViewed := 0.0
+	if lastViewed.Valid {
+		daysSinceViewed = time.Since(lastViewed.Time).Hours() / 24
+	}
+
 	recencyBonus := 0.0
 	if daysSinceViewed < 7 {
 		recencyBonus = (7 - daysSinceViewed) * 10
 	}
 
-	stats.Hotness = float64(stats.Views)*1.0 + float64(stats.Likes)*5.0 + recencyBonus
+	hotness := float64(views)*1.0 + float64(likes)*5.0 + recencyBonus
+
+	s.db.Exec(`UPDATE video_stats SET hotness = ? WHERE path = ?`, hotness, path)
 }

@@ -1,214 +1,243 @@
 package storage
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"sync"
+	"database/sql"
 	"time"
 )
 
-// Playlist represents a video playlist
 type Playlist struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
-	Videos      []string  `json:"videos"` // Video paths
+	Videos      []string  `json:"videos"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
-// PlaylistStorage handles playlist persistence
 type PlaylistStorage struct {
-	filePath   string
-	playlists  map[string]*Playlist
-	mu         sync.RWMutex
+	db *sql.DB
 }
 
-// NewPlaylistStorage creates a new playlist storage instance
 func NewPlaylistStorage(dataDir string) *PlaylistStorage {
-	s := &PlaylistStorage{
-		filePath:  filepath.Join(dataDir, "playlists.json"),
-		playlists: make(map[string]*Playlist),
-	}
-	s.load()
-	return s
-}
-
-// load reads playlists from file
-func (s *PlaylistStorage) load() error {
-	data, err := os.ReadFile(s.filePath)
+	db, err := InitDB(dataDir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
+		panic(err)
 	}
-
-	var playlists map[string]*Playlist
-	if err := json.Unmarshal(data, &playlists); err != nil {
-		return err
-	}
-
-	s.playlists = playlists
-	return nil
+	return &PlaylistStorage{db: db}
 }
 
-// save writes playlists to file
-func (s *PlaylistStorage) save() error {
-	data, err := json.MarshalIndent(s.playlists, "", "  ")
-	if err != nil {
-		return err
-	}
-
-	dir := filepath.Dir(s.filePath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return err
-	}
-
-	return os.WriteFile(s.filePath, data, 0644)
-}
-
-// generateID generates a unique playlist ID
 func generateID() string {
 	return time.Now().Format("20060102150405")
 }
 
-// Create creates a new playlist
 func (s *PlaylistStorage) Create(name, description string) *Playlist {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	id := generateID()
-	playlist := &Playlist{
+	now := time.Now()
+
+	_, err := s.db.Exec(`
+		INSERT INTO playlists (id, name, description, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+	`, id, name, description, now, now)
+
+	if err != nil {
+		return nil
+	}
+
+	return &Playlist{
 		ID:          id,
 		Name:        name,
 		Description: description,
 		Videos:      []string{},
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		CreatedAt:   now,
+		UpdatedAt:   now,
 	}
-	s.playlists[id] = playlist
-	s.save()
-
-	return playlist
 }
 
-// Get returns a playlist by ID
 func (s *PlaylistStorage) Get(id string) *Playlist {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	var playlist Playlist
+	var createdAt, updatedAt sql.NullTime
 
-	return s.playlists[id]
-}
+	err := s.db.QueryRow(`
+		SELECT id, name, description, created_at, updated_at
+		FROM playlists WHERE id = ?
+	`, id).Scan(&playlist.ID, &playlist.Name, &playlist.Description, &createdAt, &updatedAt)
 
-// GetAll returns all playlists
-func (s *PlaylistStorage) GetAll() []*Playlist {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	result := make([]*Playlist, 0, len(s.playlists))
-	for _, p := range s.playlists {
-		result = append(result, p)
+	if err == sql.ErrNoRows {
+		return nil
 	}
-	return result
-}
-
-// Update updates a playlist
-func (s *PlaylistStorage) Update(id, name, description string) *Playlist {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	playlist, ok := s.playlists[id]
-	if !ok {
+	if err != nil {
 		return nil
 	}
 
-	if name != "" {
-		playlist.Name = name
+	if createdAt.Valid {
+		playlist.CreatedAt = createdAt.Time
 	}
-	if description != "" {
-		playlist.Description = description
+	if updatedAt.Valid {
+		playlist.UpdatedAt = updatedAt.Time
 	}
-	playlist.UpdatedAt = time.Now()
-	s.save()
 
-	return playlist
+	playlist.Videos = s.getVideos(id)
+	return &playlist
 }
 
-// Delete deletes a playlist
+func (s *PlaylistStorage) getVideos(playlistID string) []string {
+	rows, err := s.db.Query(`
+		SELECT video_path FROM playlist_videos
+		WHERE playlist_id = ? ORDER BY position
+	`, playlistID)
+	if err != nil {
+		return []string{}
+	}
+	defer rows.Close()
+
+	var videos []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			continue
+		}
+		videos = append(videos, path)
+	}
+
+	if videos == nil {
+		videos = []string{}
+	}
+	return videos
+}
+
+func (s *PlaylistStorage) GetAll() []*Playlist {
+	rows, err := s.db.Query(`
+		SELECT id, name, description, created_at, updated_at
+		FROM playlists ORDER BY updated_at DESC
+	`)
+	if err != nil {
+		return []*Playlist{}
+	}
+	defer rows.Close()
+
+	var playlists []*Playlist
+	for rows.Next() {
+		var p Playlist
+		var createdAt, updatedAt sql.NullTime
+
+		err := rows.Scan(&p.ID, &p.Name, &p.Description, &createdAt, &updatedAt)
+		if err != nil {
+			continue
+		}
+
+		if createdAt.Valid {
+			p.CreatedAt = createdAt.Time
+		}
+		if updatedAt.Valid {
+			p.UpdatedAt = updatedAt.Time
+		}
+
+		p.Videos = s.getVideos(p.ID)
+		playlists = append(playlists, &p)
+	}
+
+	if playlists == nil {
+		playlists = []*Playlist{}
+	}
+	return playlists
+}
+
+func (s *PlaylistStorage) Update(id, name, description string) *Playlist {
+	now := time.Now()
+
+	if name != "" && description != "" {
+		_, err := s.db.Exec(`
+			UPDATE playlists SET name = ?, description = ?, updated_at = ? WHERE id = ?
+		`, name, description, now, id)
+		if err != nil {
+			return nil
+		}
+	} else if name != "" {
+		_, err := s.db.Exec(`
+			UPDATE playlists SET name = ?, updated_at = ? WHERE id = ?
+		`, name, now, id)
+		if err != nil {
+			return nil
+		}
+	} else if description != "" {
+		_, err := s.db.Exec(`
+			UPDATE playlists SET description = ?, updated_at = ? WHERE id = ?
+		`, description, now, id)
+		if err != nil {
+			return nil
+		}
+	}
+
+	return s.Get(id)
+}
+
 func (s *PlaylistStorage) Delete(id string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, ok := s.playlists[id]; !ok {
-		return false
-	}
-
-	delete(s.playlists, id)
-	s.save()
-	return true
+	_, err := s.db.Exec(`DELETE FROM playlists WHERE id = ?`, id)
+	return err == nil
 }
 
-// AddVideo adds a video to a playlist
 func (s *PlaylistStorage) AddVideo(playlistID, videoPath string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	playlist, ok := s.playlists[playlistID]
-	if !ok {
+	var maxPos int
+	err := s.db.QueryRow(`
+		SELECT COALESCE(MAX(position), -1) FROM playlist_videos WHERE playlist_id = ?
+	`, playlistID).Scan(&maxPos)
+	if err != nil {
 		return false
 	}
 
-	// Check if video already in playlist
-	for _, v := range playlist.Videos {
-		if v == videoPath {
-			return true // Already exists
-		}
+	_, err = s.db.Exec(`
+		INSERT OR IGNORE INTO playlist_videos (playlist_id, video_path, position, added_at)
+		VALUES (?, ?, ?, ?)
+	`, playlistID, videoPath, maxPos+1, time.Now())
+
+	if err != nil {
+		return false
 	}
 
-	playlist.Videos = append(playlist.Videos, videoPath)
-	playlist.UpdatedAt = time.Now()
-	s.save()
-
+	s.db.Exec(`UPDATE playlists SET updated_at = ? WHERE id = ?`, time.Now(), playlistID)
 	return true
 }
 
-// RemoveVideo removes a video from a playlist
 func (s *PlaylistStorage) RemoveVideo(playlistID, videoPath string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	_, err := s.db.Exec(`
+		DELETE FROM playlist_videos WHERE playlist_id = ? AND video_path = ?
+	`, playlistID, videoPath)
 
-	playlist, ok := s.playlists[playlistID]
-	if !ok {
+	if err != nil {
 		return false
 	}
 
-	for i, v := range playlist.Videos {
-		if v == videoPath {
-			playlist.Videos = append(playlist.Videos[:i], playlist.Videos[i+1:]...)
-			playlist.UpdatedAt = time.Now()
-			s.save()
-			return true
+	s.db.Exec(`UPDATE playlists SET updated_at = ? WHERE id = ?`, time.Now(), playlistID)
+	return true
+}
+
+func (s *PlaylistStorage) ReorderVideos(playlistID string, videoPaths []string) bool {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false
+	}
+	defer tx.Rollback()
+
+	_, err = tx.Exec(`DELETE FROM playlist_videos WHERE playlist_id = ?`, playlistID)
+	if err != nil {
+		return false
+	}
+
+	now := time.Now()
+	for i, path := range videoPaths {
+		_, err = tx.Exec(`
+			INSERT INTO playlist_videos (playlist_id, video_path, position, added_at)
+			VALUES (?, ?, ?, ?)
+		`, playlistID, path, i, now)
+		if err != nil {
+			return false
 		}
 	}
 
-	return false
-}
-
-// ReorderVideos reorders videos in a playlist
-func (s *PlaylistStorage) ReorderVideos(playlistID string, videoPaths []string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	playlist, ok := s.playlists[playlistID]
-	if !ok {
+	_, err = tx.Exec(`UPDATE playlists SET updated_at = ? WHERE id = ?`, now, playlistID)
+	if err != nil {
 		return false
 	}
 
-	playlist.Videos = videoPaths
-	playlist.UpdatedAt = time.Now()
-	s.save()
-
-	return true
+	return tx.Commit() == nil
 }
