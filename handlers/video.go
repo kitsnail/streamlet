@@ -19,6 +19,7 @@ import (
 type Video struct {
 	Name     string `json:"name"`
 	Size     int64  `json:"size"`
+	Duration string `json:"duration"` // Video duration in human readable format
 	Path     string `json:"path"`
 	Dir      string `json:"dir,omitempty"` // Source directory index or name
 	Modified string `json:"modified"`
@@ -91,9 +92,16 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 						stats = &storage.VideoStats{}
 					}
 
+					// Get video duration
+					duration := ""
+					if dur, err := GetMP4Duration(path); err == nil && dur > 0 {
+						duration = FormatDuration(dur)
+					}
+
 					videos = append(videos, Video{
 						Name:     d.Name(),
 						Size:     info.Size(),
+						Duration: duration,
 						Path:     prefixedPath,
 						Dir:      filepath.Base(videoDir),
 						Modified: info.ModTime().Format("2006-01-02 15:04"),

@@ -254,7 +254,10 @@
                     <div class="p-2">
                         <h3 class="text-white text-sm font-medium line-clamp-2 leading-tight" title="${video.name}">${video.name}</h3>
                         <div class="flex items-center justify-between mt-1.5">
-                            <span class="text-xs text-slate-400">${formatSize(video.size)}</span>
+                            <div class="flex items-center gap-2 text-xs text-slate-400">
+                                <span>${formatSize(video.size)}</span>
+                                ${video.duration ? `<span>•</span><span>${video.duration}</span>` : ''}
+                            </div>
                             <div class="flex items-center gap-1">
                                 <button onclick="event.preventDefault(); event.stopPropagation(); toggleLike('${video.path}', '${video.name.replace(/'/g, "\\'")}', this)" 
                                     class="p-1 ${video.liked ? 'text-red-400' : 'text-slate-400'} active:bg-slate-700 rounded transition-colors" 
