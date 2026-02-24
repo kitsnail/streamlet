@@ -115,11 +115,39 @@
                     </svg>
                 </button>
             </div>
+
+            <!-- Duration Filter Row -->
+            <div class="flex gap-2 mt-2">
+                <select id="durationMinSelect" class="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-accent cursor-pointer text-sm">
+                    <option value="0">最短时长</option>
+                    <option value="5">5分钟+</option>
+                    <option value="10">10分钟+</option>
+                    <option value="15">15分钟+</option>
+                    <option value="20">20分钟+</option>
+                    <option value="30">30分钟+</option>
+                    <option value="45">45分钟+</option>
+                    <option value="60">1小时+</option>
+                    <option value="90">1.5小时+</option>
+                    <option value="120">2小时+</option>
+                </select>
+                <span class="text-slate-400 self-center text-sm">—</span>
+                <select id="durationMaxSelect" class="flex-1 px-3 py-2 bg-slate-700 border border-slate-600 rounded-xl text-white focus:outline-none focus:ring-2 focus:ring-accent cursor-pointer text-sm">
+                    <option value="0">不限</option>
+                    <option value="10">10分钟内</option>
+                    <option value="20">20分钟内</option>
+                    <option value="30">30分钟内</option>
+                    <option value="45">45分钟内</option>
+                    <option value="60">1小时内</option>
+                    <option value="90">1.5小时内</option>
+                    <option value="120">2小时内</option>
+                    <option value="180">3小时内</option>
+                </select>
+            </div>
         </div>
     </header>
 
     <!-- Main Content -->
-    <main class="pt-32 pb-20 px-4">
+    <main class="pt-40 pb-20 px-4">
         <!-- Stats -->
         <div class="mb-4 flex items-center justify-between">
             <p class="text-slate-400 text-sm">
@@ -189,6 +217,7 @@
     <script>
         let currentPage = 1, totalPages = 1, pageSize = 50;
         let currentSearch = '', currentSort = 'modified', currentOrder = 'desc';
+        let currentDurationMin = 0, currentDurationMax = 0;
         let searchTimeout = null;
         let currentVideoPath = null;
         let playlists = [];
@@ -442,6 +471,8 @@
             try {
                 const params = new URLSearchParams({ page: currentPage, pageSize: pageSize, sort: currentSort, order: currentOrder });
                 if (currentSearch) params.append('search', currentSearch);
+                if (currentDurationMin > 0) params.append('durationMin', currentDurationMin);
+                if (currentDurationMax > 0) params.append('durationMax', currentDurationMax);
                 const response = await fetch(`/api/videos?${params}`);
                 if (response.status === 401) { window.location.href = '/login'; return; }
                 const data = await response.json();
@@ -467,6 +498,16 @@
             searchTimeout = setTimeout(() => { currentSearch = e.target.value.trim(); currentPage = 1; fetchVideos(); }, 300); 
         });
         document.getElementById('sortSelect').addEventListener('change', (e) => { currentSort = e.target.value; currentPage = 1; fetchVideos(); });
+        document.getElementById('durationMinSelect').addEventListener('change', (e) => { 
+            currentDurationMin = parseInt(e.target.value) || 0; 
+            currentPage = 1; 
+            fetchVideos(); 
+        });
+        document.getElementById('durationMaxSelect').addEventListener('change', (e) => { 
+            currentDurationMax = parseInt(e.target.value) || 0; 
+            currentPage = 1; 
+            fetchVideos(); 
+        });
 
         // Close modal on backdrop click
         document.getElementById('playlistModal').addEventListener('click', (e) => {

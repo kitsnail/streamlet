@@ -17,16 +17,17 @@ import (
 
 // Video represents a video file info
 type Video struct {
-	Name     string `json:"name"`
-	Size     int64  `json:"size"`
-	Duration string `json:"duration"` // Video duration in human readable format
-	Path     string `json:"path"`
-	Dir      string `json:"dir,omitempty"` // Source directory index or name
-	Modified string `json:"modified"`
-	Views    int    `json:"views"`
-	Likes    int    `json:"likes"`
-	Liked    bool   `json:"liked"`
-	Hotness  float64 `json:"hotness"`
+	Name       string `json:"name"`
+	Size       int64  `json:"size"`
+	Duration   string `json:"duration"`    // Video duration in human readable format
+	DurationSec int    `json:"durationSec"` // Video duration in seconds (for filtering)
+	Path       string `json:"path"`
+	Dir        string `json:"dir,omitempty"` // Source directory index or name
+	Modified   string `json:"modified"`
+	Views      int    `json:"views"`
+	Likes      int    `json:"likes"`
+	Liked      bool   `json:"liked"`
+	Hotness    float64 `json:"hotness"`
 }
 
 // VideoListHandler creates a video list handler with storage
@@ -40,6 +41,8 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 		search := c.Query("search")
 		sortBy := c.DefaultQuery("sort", "modified") // modified, views, likes, hotness, name, size
 		order := c.DefaultQuery("order", "desc")     // asc, desc
+		durationMin, _ := strconv.Atoi(c.DefaultQuery("durationMin", "0")) // minutes
+		durationMax, _ := strconv.Atoi(c.DefaultQuery("durationMax", "0")) // minutes, 0 means no limit
 
 		if page < 1 {
 			page = 1
@@ -94,25 +97,50 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 
 					// Get video duration
 					duration := ""
+					durationSec := 0
 					if dur, err := GetMP4Duration(path); err == nil && dur > 0 {
 						duration = FormatDuration(dur)
+						durationSec = int(dur.Seconds())
 					}
 
 					videos = append(videos, Video{
-						Name:     d.Name(),
-						Size:     info.Size(),
-						Duration: duration,
-						Path:     prefixedPath,
-						Dir:      filepath.Base(videoDir),
-						Modified: info.ModTime().Format("2006-01-02 15:04"),
-						Views:    stats.Views,
-						Likes:    stats.Likes,
-						Liked:    stats.Liked,
-						Hotness:  stats.Hotness,
+						Name:       d.Name(),
+						Size:       info.Size(),
+						Duration:   duration,
+						DurationSec: durationSec,
+						Path:       prefixedPath,
+						Dir:        filepath.Base(videoDir),
+						Modified:   info.ModTime().Format("2006-01-02 15:04"),
+						Views:      stats.Views,
+						Likes:      stats.Likes,
+						Liked:      stats.Liked,
+						Hotness:    stats.Hotness,
 					})
 				}
 				return nil
 			})
+		}
+
+		// Filter by duration (durationMin and durationMax are in minutes)
+		if durationMin > 0 || durationMax > 0 {
+			filtered := make([]Video, 0)
+			minSec := durationMin * 60
+			maxSec := durationMax * 60
+			
+			for _, v := range videos {
+				// If max is 0, only check min
+				if durationMax == 0 {
+					if v.DurationSec >= minSec {
+						filtered = append(filtered, v)
+					}
+				} else {
+					// Check both min and max
+					if v.DurationSec >= minSec && v.DurationSec < maxSec {
+						filtered = append(filtered, v)
+					}
+				}
+			}
+			videos = filtered
 		}
 
 		// Sort based on sortBy parameter
