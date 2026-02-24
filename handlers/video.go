@@ -39,7 +39,7 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 		pageSize, _ := strconv.Atoi(c.DefaultQuery("pageSize", "50"))
 		search := c.Query("search")
-		sortBy := c.DefaultQuery("sort", "modified") // modified, views, likes, hotness, name, size
+		sortBy := c.DefaultQuery("sort", "modified") // modified, views, likes, hotness, name, size, duration
 		order := c.DefaultQuery("order", "desc")     // asc, desc
 		durationMin, _ := strconv.Atoi(c.DefaultQuery("durationMin", "0")) // minutes
 		durationMax, _ := strconv.Atoi(c.DefaultQuery("durationMax", "0")) // minutes, 0 means no limit
@@ -181,6 +181,14 @@ func VideoListHandler(cfg *config.Config, store *storage.Storage) gin.HandlerFun
 				}
 				return videos[i].Size > videos[j].Size
 			})
+		case "duration":
+			sort.Slice(videos, func(i, j int) bool {
+				if isAsc {
+					return videos[i].DurationSec < videos[j].DurationSec
+				}
+				return videos[i].DurationSec > videos[j].DurationSec
+			})
+		
 		default: // "modified"
 			sort.Slice(videos, func(i, j int) bool {
 				if isAsc {
